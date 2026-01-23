@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, TypeVar
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -26,6 +26,8 @@ from cosmos_sdk._internal.types import (
     ListLinkTypesResponse,
     ListObjectsResponse,
     ListObjectTypesResponse,
+    ObjectAggregateRequest,
+    ObjectAggregateResult,
     ObjectType,
     ResolvedObject,
     SearchQuery,
@@ -242,9 +244,11 @@ class ObjectDBClient:
     ) -> ObjectType | None:
         """Get object type by name."""
         try:
+            # URL-encode the name to handle spaces and special characters
+            encoded_name = quote(name, safe="")
             data = await self._request(
                 "GET",
-                f"/api/v1/types/by-name/{name}",
+                f"/api/v1/types/by-name/{encoded_name}",
                 query={"tenant_id": tenant_id, "graph_key": graph_key},
                 jwt_token=jwt_token,
             )
@@ -262,9 +266,11 @@ class ObjectDBClient:
     ) -> ObjectType | None:
         """Get object type by name using internal endpoint."""
         try:
+            # URL-encode the name to handle spaces and special characters
+            encoded_name = quote(name, safe="")
             data = await self._request(
                 "GET",
-                f"/internal/types/by-name/{name}",
+                f"/internal/types/by-name/{encoded_name}",
                 query={"tenant_id": tenant_id, "graph_key": graph_key},
             )
             return ObjectType.model_validate(data)
@@ -369,9 +375,11 @@ class ObjectDBClient:
             reverse is True if the link is accessed from target side.
         """
         try:
+            # URL-encode the name to handle spaces and special characters
+            encoded_name = quote(name, safe="")
             data = await self._request(
                 "GET",
-                f"/api/v1/links/by-name/{name}",
+                f"/api/v1/links/by-name/{encoded_name}",
                 query={
                     "tenant_id": tenant_id,
                     "source_type": source_type,
@@ -397,9 +405,11 @@ class ObjectDBClient:
     ) -> tuple[LinkType, bool] | None:
         """Get link type by name using internal endpoint."""
         try:
+            # URL-encode the name to handle spaces and special characters
+            encoded_name = quote(name, safe="")
             data = await self._request(
                 "GET",
-                f"/internal/links/by-name/{name}",
+                f"/internal/links/by-name/{encoded_name}",
                 query={
                     "tenant_id": tenant_id,
                     "source_type": source_type,
@@ -495,7 +505,7 @@ class ObjectDBClient:
             "GET",
             f"/api/v1/objects/{object_type}",
             query={
-                "tenant_id": tenant_id,
+                "tenant_id": tenant_id or "default",
                 "limit": limit,
                 "offset": offset,
             },
@@ -519,6 +529,23 @@ class ObjectDBClient:
             jwt_token=jwt_token,
         )
         return SearchResult.model_validate(data)
+
+    async def aggregate_objects(
+        self,
+        object_type: str,
+        request: ObjectAggregateRequest,
+        tenant_id: str | None = None,
+        jwt_token: str | None = None,
+    ) -> ObjectAggregateResult:
+        """Aggregate objects with sum, avg, min, max, count, group_by."""
+        data = await self._request(
+            "POST",
+            f"/api/v1/objects/{object_type}/aggregate",
+            body=request.model_dump(exclude_none=True),
+            query={"tenant_id": tenant_id},
+            jwt_token=jwt_token,
+        )
+        return ObjectAggregateResult.model_validate(data)
 
     async def batch_get_objects(
         self,

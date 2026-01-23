@@ -310,11 +310,17 @@ class ObjectSet(Generic[T]):
         self._sort_order: Literal["asc", "desc"] | None = None
         # For search_around chaining
         self._traversal_steps: list[dict[str, Any]] = []
+        # Filters to apply after traversal (added after search_around)
+        self._post_traversal_filters: list[PropertyComparison | CompositeFilter] = []
 
     def where(self, *conditions: PropertyComparison | CompositeFilter) -> Self:
         """Add filter conditions."""
         new_set = self._copy()
-        new_set._filters.extend(conditions)
+        # If we have traversal steps, these filters apply after traversal
+        if new_set._traversal_steps:
+            new_set._post_traversal_filters.extend(conditions)
+        else:
+            new_set._filters.extend(conditions)
         return new_set
 
     def search(self, query: str) -> Self:
@@ -404,6 +410,7 @@ class ObjectSet(Generic[T]):
         new_set._sort_by = self._sort_by
         new_set._sort_order = self._sort_order
         new_set._traversal_steps = self._traversal_steps.copy()
+        new_set._post_traversal_filters = self._post_traversal_filters.copy()
         return new_set  # type: ignore
 
     def _build_search_query(self) -> dict[str, Any]:
@@ -414,27 +421,98 @@ class ObjectSet(Generic[T]):
             query["query"] = self._search_query
 
         if self._filters:
-            filters = []
-            for f in self._filters:
-                if isinstance(f, PropertyComparison):
-                    filters.append({
-                        "field": f.field,
-                        "op": f.op,
-                        "value": f.value,
-                    })
-                # TODO: Handle CompositeFilter
+            filters = self._flatten_filters(self._filters)
             query["filters"] = filters
 
-        if self._sort_by:
-            query["sort_by"] = self._sort_by
-        if self._sort_order:
-            query["sort_order"] = self._sort_order
+        # When using limit or offset without explicit sort, add default sort by object_id
+        # to ensure consistent ordering across queries (important for pagination)
+        sort_by = self._sort_by
+        sort_order = self._sort_order
+        if (self._limit or self._offset) and not sort_by:
+            sort_by = "object_id"
+            sort_order = "asc"
+
+        if sort_by:
+            query["sort_by"] = sort_by
+        if sort_order:
+            query["sort_order"] = sort_order
         if self._limit:
             query["limit"] = self._limit
         if self._offset:
             query["offset"] = self._offset
 
         return query
+
+    def _flatten_filters(
+        self, conditions: list[PropertyComparison | CompositeFilter]
+    ) -> list[dict[str, Any]]:
+        """
+        Flatten filters including CompositeFilter (AND/OR).
+
+        Note: OR conditions are converted to 'in' operator when possible,
+        otherwise they are expanded as separate filters (which results in AND behavior).
+        For proper OR support, the server would need to support nested bool queries.
+        """
+        filters = []
+        for condition in conditions:
+            if isinstance(condition, PropertyComparison):
+                filters.append({
+                    "field": condition.field,
+                    "op": condition.op,
+                    "value": condition.value,
+                })
+            elif isinstance(condition, CompositeFilter):
+                if condition.operator == "and":
+                    # AND: just flatten all conditions
+                    filters.extend(self._flatten_filters(condition.conditions))
+                elif condition.operator == "or":
+                    # OR: try to optimize to 'in' query if all conditions are on same field with 'eq'
+                    or_filters = self._try_convert_or_to_in(condition.conditions)
+                    if or_filters:
+                        filters.extend(or_filters)
+                    else:
+                        # Fallback: flatten (Note: this results in AND behavior, not OR)
+                        # Proper OR requires server-side bool query support
+                        filters.extend(self._flatten_filters(condition.conditions))
+        return filters
+
+    def _try_convert_or_to_in(
+        self, conditions: list[PropertyComparison | CompositeFilter]
+    ) -> list[dict[str, Any]] | None:
+        """
+        Try to convert OR conditions to 'in' operator.
+
+        This only works when:
+        - All conditions are PropertyComparison (not nested CompositeFilter)
+        - All conditions use 'eq' operator
+        - All conditions are on the same field
+
+        Returns None if conversion is not possible.
+        """
+        if not all(isinstance(c, PropertyComparison) for c in conditions):
+            return None
+
+        comparisons = [c for c in conditions if isinstance(c, PropertyComparison)]
+
+        if not all(c.op == "eq" for c in comparisons):
+            return None
+
+        # Group by field
+        fields = set(c.field for c in comparisons)
+
+        if len(fields) == 1:
+            # All same field - convert to 'in'
+            field = comparisons[0].field
+            values = [c.value for c in comparisons]
+            return [{
+                "field": field,
+                "op": "in",
+                "value": values,
+            }]
+        else:
+            # Different fields - can't convert to simple 'in'
+            # Return None to use fallback
+            return None
 
     async def list(self) -> ObjectList[T]:
         """Execute query and return results as ObjectList."""
@@ -451,7 +529,18 @@ class ObjectSet(Generic[T]):
         if self._traversal_steps:
             return await self._execute_traversal()
 
-        if self._filters or self._search_query:
+        # Use search endpoint if any query parameters are set
+        # (filters, search query, sort, offset, or limit - search supports more features)
+        # Always use search when limit is set to ensure consistent ordering for pagination
+        needs_search = (
+            self._filters
+            or self._search_query
+            or self._sort_by
+            or self._offset
+            or self._limit
+        )
+
+        if needs_search:
             # Use search endpoint
             search_query = SearchQuery(**self._build_search_query())
             result = await api_client.search_objects(
@@ -460,7 +549,7 @@ class ObjectSet(Generic[T]):
             )
             objects = result.objects
         else:
-            # Use list endpoint
+            # Use list endpoint (no params at all)
             result = await api_client.list_objects(
                 self._object_type_key,
                 limit=self._limit,
@@ -481,18 +570,13 @@ class ObjectSet(Generic[T]):
         return ObjectList(items)
 
     async def _execute_traversal(self) -> ObjectList[T]:
-        """Execute graph traversal with search_around steps."""
-        from cosmos_sdk._internal.types import (
-            EdgeDirection,
-            TraversalRequest,
-            TraversalStep,
-        )
+        """Execute graph traversal with search_around steps using FK relationships."""
+        from cosmos_sdk._internal.types import SearchFilter, SearchQuery
 
         api_client = self._client._api_client
 
         # First, get starting objects (with any filters applied)
         if self._filters or self._search_query:
-            from cosmos_sdk._internal.types import SearchQuery
             search_query = SearchQuery(**self._build_search_query())
             start_result = await api_client.search_objects(
                 self._object_type_key,
@@ -509,40 +593,138 @@ class ObjectSet(Generic[T]):
         if not start_objects:
             return ObjectList([])
 
-        # Build traversal steps
-        steps = [
-            TraversalStep(
-                link_type=step["link_type"],
-                direction=EdgeDirection(step["direction"]),
+        # Process each traversal step using FK relationships
+        current_objects = start_objects
+        current_type = self._object_type_key
+
+        for step in self._traversal_steps:
+            link_name = step["link_type"]
+            direction = step["direction"]
+
+            # Get LinkType info to find FK configuration
+            # Try multiple approaches: by name, by key, by listing all
+            link_info = None
+
+            # 1. Try get_link_type_by_name API
+            try:
+                link_info = await api_client.get_link_type_by_name(
+                    link_name,
+                    source_type=current_type if direction == "outgoing" else None,
+                    target_type=current_type if direction == "incoming" else None,
+                )
+            except Exception:
+                pass
+
+            # 2. Try with link_type_key directly
+            if not link_info:
+                try:
+                    link_type = await api_client.get_link_type(link_name)
+                    link_info = (link_type, False)
+                except Exception:
+                    pass
+
+            # 3. Search by name in all link types
+            if not link_info:
+                try:
+                    all_links = await api_client.list_link_types()
+                    for lt in all_links.link_types:
+                        # Match by name (case-insensitive) or key
+                        if lt.name.lower() == link_name.lower() or lt.link_type_key == link_name:
+                            # Check if direction matches
+                            if direction == "outgoing" and lt.source_type == current_type:
+                                link_info = (lt, False)
+                                break
+                            elif direction == "incoming" and lt.target_type == current_type:
+                                link_info = (lt, True)
+                                break
+                            elif direction == "both":
+                                is_reverse = lt.target_type == current_type
+                                link_info = (lt, is_reverse)
+                                break
+                except Exception:
+                    pass
+
+            if not link_info:
+                # Link not found, return empty
+                return ObjectList([])
+
+            link_type, is_reverse = link_info
+            fk_config = link_type.fk_config
+
+            if not fk_config:
+                # No FK config, can't traverse without edges
+                return ObjectList([])
+
+            # FK config: source_field is on source_type, target_pk_field is on target_type
+            # Example: Factory(source) has factory_id, Inventory(target) has factory_id
+
+            # Determine traversal direction
+            # outgoing: current_type is source, we want target
+            # incoming: current_type is target, we want source
+            is_outgoing = (direction == "outgoing" and not is_reverse) or (direction == "incoming" and is_reverse)
+
+            if is_outgoing:
+                # We are source, finding targets
+                # Get source_field values from current objects, search target by target_pk_field
+                target_type_key = link_type.target_type
+                current_field = fk_config.source_field
+                search_field = fk_config.target_pk_field
+            else:
+                # We are target, finding sources
+                # Get target_pk_field values from current objects, search source by source_field
+                target_type_key = link_type.source_type
+                current_field = fk_config.target_pk_field
+                search_field = fk_config.source_field
+
+            # Get FK values from current objects
+            fk_values = [
+                obj.effective_state.get(current_field)
+                for obj in current_objects
+                if obj.effective_state.get(current_field) is not None
+            ]
+
+            if not fk_values:
+                return ObjectList([])
+
+            # Remove duplicates
+            fk_values = list(set(fk_values))
+
+            # Build filters list with FK constraint
+            filters = [SearchFilter(field=search_field, op="in", value=fk_values)]
+
+            # If this is the last traversal step and we have post-traversal filters, add them
+            is_last_step = step == self._traversal_steps[-1]
+            if is_last_step and self._post_traversal_filters:
+                # Flatten and add post-traversal filters
+                flat_filters = self._flatten_filters(self._post_traversal_filters)
+                for f in flat_filters:
+                    filters.append(SearchFilter(
+                        field=f["field"],
+                        op=f["op"],
+                        value=f["value"],
+                    ))
+
+            # Search for target objects using FK values and filters
+            search_query = SearchQuery(
+                filters=filters,
+                limit=self._limit or 1000,
             )
-            for step in self._traversal_steps
-        ]
 
-        # Execute traversal for each starting object
-        all_objects: list[Any] = []
-        seen_ids: set[str] = set()
-
-        for start_obj in start_objects:
-            request = TraversalRequest(
-                start_id=start_obj.object_id,
-                start_type=start_obj.object_type,
-                steps=steps,
-                limit=self._limit,
+            target_result = await api_client.search_objects(
+                target_type_key,
+                search_query,
             )
 
-            result = await api_client.traverse(request)
+            current_objects = target_result.objects
+            current_type = target_type_key
 
-            # Collect unique objects from traversal result
-            for obj in result.objects:
-                if obj.object_id not in seen_ids:
-                    seen_ids.add(obj.object_id)
-                    all_objects.append(obj)
+            if not current_objects:
+                return ObjectList([])
 
         # Convert to object instances
-        # Note: For traversal, we return BaseObject since target type may vary
         items = [
             self._object_type._from_resolved(obj, self._client)
-            for obj in all_objects
+            for obj in current_objects
         ]
 
         # Eager load included links
@@ -604,36 +786,88 @@ class ObjectSet(Generic[T]):
         import asyncio
 
         result = asyncio.get_event_loop().run_until_complete(self.list())
-        return result.to_dataframe()
+        df = result.to_dataframe()
 
-    # Aggregation methods
+        # Apply select if specified
+        if self._selected_fields and not df.is_empty():
+            # Only keep requested columns that exist in the dataframe
+            available_cols = set(df.columns)
+            cols_to_keep = [c for c in self._selected_fields if c in available_cols]
+            if cols_to_keep:
+                df = df.select(cols_to_keep)
+
+        return df
+
+    # Aggregation methods (server-side)
     async def sum(self, field: Property | str) -> float:
-        """Sum values of a field."""
-        # TODO: Implement with API aggregation endpoint
-        result = await self.list()
+        """Sum values of a field (server-side aggregation)."""
         field_name = field._name if isinstance(field, Property) else field
-        return sum(getattr(obj, field_name) or 0 for obj in result)
+        result = await self._aggregate([{"name": "result", "type": "sum", "field": field_name}])
+        return result.get("result", 0) or 0
 
     async def avg(self, field: Property | str) -> float:
-        """Average values of a field."""
-        result = await self.list()
+        """Average values of a field (server-side aggregation)."""
         field_name = field._name if isinstance(field, Property) else field
-        values = [getattr(obj, field_name) for obj in result if getattr(obj, field_name) is not None]
-        return sum(values) / len(values) if values else 0
+        result = await self._aggregate([{"name": "result", "type": "avg", "field": field_name}])
+        return result.get("result", 0) or 0
 
     async def min(self, field: Property | str) -> Any:
-        """Minimum value of a field."""
-        result = await self.list()
+        """Minimum value of a field (server-side aggregation)."""
         field_name = field._name if isinstance(field, Property) else field
-        values = [getattr(obj, field_name) for obj in result if getattr(obj, field_name) is not None]
-        return min(values) if values else None
+        result = await self._aggregate([{"name": "result", "type": "min", "field": field_name}])
+        return result.get("result")
 
     async def max(self, field: Property | str) -> Any:
-        """Maximum value of a field."""
-        result = await self.list()
+        """Maximum value of a field (server-side aggregation)."""
         field_name = field._name if isinstance(field, Property) else field
-        values = [getattr(obj, field_name) for obj in result if getattr(obj, field_name) is not None]
-        return max(values) if values else None
+        result = await self._aggregate([{"name": "result", "type": "max", "field": field_name}])
+        return result.get("result")
+
+    async def stats(self, field: Property | str) -> dict[str, Any]:
+        """Get all stats (count, sum, avg, min, max) for a field (server-side aggregation)."""
+        field_name = field._name if isinstance(field, Property) else field
+        result = await self._aggregate([{"name": "result", "type": "stats", "field": field_name}])
+        return result.get("result", {})
+
+    async def _aggregate(self, metrics: list[dict[str, str]]) -> dict[str, Any]:
+        """Execute server-side aggregation."""
+        from cosmos_sdk._internal.types import (
+            MetricRequest,
+            ObjectAggregateRequest,
+            SearchFilter,
+        )
+
+        api_client = self._client._api_client
+
+        # Build filters from conditions
+        filters = None
+        if self._filters:
+            filters = []
+            for f in self._filters:
+                if isinstance(f, PropertyComparison):
+                    filters.append(SearchFilter(
+                        field=f.field,
+                        op=f.op,
+                        value=f.value,
+                    ))
+
+        # Build metric requests
+        metric_requests = [
+            MetricRequest(name=m["name"], type=m["type"], field=m.get("field", ""))
+            for m in metrics
+        ]
+
+        request = ObjectAggregateRequest(
+            filters=filters,
+            metrics=metric_requests,
+        )
+
+        result = await api_client.aggregate_objects(
+            self._object_type_key,
+            request,
+        )
+
+        return result.metrics or {}
 
     def group_by(self, *fields: Property | str) -> GroupedObjectSet[T]:
         """
@@ -727,53 +961,57 @@ class GroupedObjectSet(Generic[T]):
 
     async def list(self) -> list[dict[str, Any]]:
         """
-        Execute grouped aggregation and return results.
+        Execute grouped aggregation and return results (server-side).
 
         Returns list of dicts with group keys and aggregation values.
         """
-        # Fetch all matching objects
-        objects = await self._object_set.list()
+        from cosmos_sdk._internal.types import (
+            MetricRequest,
+            ObjectAggregateRequest,
+            SearchFilter,
+        )
 
-        # Group objects
-        groups: dict[tuple, list[Any]] = {}
-        for obj in objects:
-            key = tuple(getattr(obj, f, None) for f in self._group_fields)
-            if key not in groups:
-                groups[key] = []
-            groups[key].append(obj)
+        api_client = self._object_set._client._api_client
 
-        # Compute aggregations for each group
-        results: list[dict[str, Any]] = []
-        for key, group_objects in groups.items():
-            row: dict[str, Any] = {}
+        # Build filters from conditions
+        filters = None
+        if self._object_set._filters:
+            filters = []
+            for f in self._object_set._filters:
+                if isinstance(f, PropertyComparison):
+                    filters.append(SearchFilter(
+                        field=f.field,
+                        op=f.op,
+                        value=f.value,
+                    ))
 
-            # Add group keys
-            for i, field in enumerate(self._group_fields):
-                row[field] = key[i]
+        # Build metric requests from aggregations
+        metric_requests = []
+        for name, agg_def in self._aggregations.items():
+            func = agg_def["func"]
+            field = agg_def.get("field", "")
 
-            # Compute aggregations
-            for name, agg_def in self._aggregations.items():
-                func = agg_def["func"]
-                field = agg_def.get("field")
+            # Map Agg helper functions to API types
+            agg_type = func  # count, sum, avg, min, max map directly
+            metric_requests.append(MetricRequest(
+                name=name,
+                type=agg_type,
+                field=field,
+            ))
 
-                if func == "count":
-                    row[name] = len(group_objects)
-                elif func == "sum":
-                    values = [getattr(obj, field, 0) or 0 for obj in group_objects]
-                    row[name] = sum(values)
-                elif func == "avg":
-                    values = [getattr(obj, field) for obj in group_objects if getattr(obj, field) is not None]
-                    row[name] = sum(values) / len(values) if values else 0
-                elif func == "min":
-                    values = [getattr(obj, field) for obj in group_objects if getattr(obj, field) is not None]
-                    row[name] = min(values) if values else None
-                elif func == "max":
-                    values = [getattr(obj, field) for obj in group_objects if getattr(obj, field) is not None]
-                    row[name] = max(values) if values else None
+        request = ObjectAggregateRequest(
+            filters=filters,
+            group_by=self._group_fields,
+            metrics=metric_requests,
+        )
 
-            results.append(row)
+        result = await api_client.aggregate_objects(
+            self._object_set._object_type_key,
+            request,
+        )
 
-        return results
+        # Return buckets (grouped results)
+        return result.buckets or []
 
     def to_dataframe(self) -> pl.DataFrame:
         """Execute and return results as Polars DataFrame."""
@@ -844,8 +1082,85 @@ class BaseObject:
     """
 
     # Class-level attributes set by code generator
-    __object_type_key__: str = ""
+    __object_type__: str = ""
+    __object_type_key__: str = ""  # Deprecated, use __object_type__
     __primary_key__: str = "id"
+
+    # ========================================
+    # Class-level query methods (use singleton client)
+    # ========================================
+
+    @classmethod
+    def _get_default_client(cls) -> CosmosClient:
+        """Get the singleton CosmosClient instance."""
+        from cosmos_sdk.client import CosmosClient
+        return CosmosClient()
+
+    @classmethod
+    def _get_object_set(cls) -> "ObjectSet":
+        """Get an ObjectSet for this type using the singleton client."""
+        client = cls._get_default_client()
+        object_type_key = getattr(cls, '__object_type__', '') or getattr(cls, '__object_type_key__', '') or cls.__name__.lower()
+        return ObjectSet(client, cls, object_type_key)
+
+    @classmethod
+    def where(cls, *conditions: "PropertyComparison") -> "ObjectSet":
+        """Filter objects by conditions."""
+        return cls._get_object_set().where(*conditions)
+
+    @classmethod
+    def limit(cls, n: int) -> "ObjectSet":
+        """Limit the number of results."""
+        return cls._get_object_set().limit(n)
+
+    @classmethod
+    def offset(cls, n: int) -> "ObjectSet":
+        """Skip the first n results."""
+        return cls._get_object_set().offset(n)
+
+    @classmethod
+    def select(cls, *fields: str) -> "ObjectSet":
+        """Select specific fields."""
+        return cls._get_object_set().select(*fields)
+
+    @classmethod
+    def order_by(cls, field: str, direction: str = "asc") -> "ObjectSet":
+        """Order results by a field."""
+        return cls._get_object_set().order_by(field, direction)
+
+    @classmethod
+    def search(cls, query: str) -> "ObjectSet":
+        """Full-text search."""
+        return cls._get_object_set().search(query)
+
+    @classmethod
+    async def list(cls) -> "ObjectList":
+        """List all objects of this type."""
+        return await cls._get_object_set().list()
+
+    @classmethod
+    async def first(cls) -> "Self | None":
+        """Get the first object."""
+        return await cls._get_object_set().first()
+
+    @classmethod
+    async def count(cls) -> int:
+        """Count objects of this type."""
+        return await cls._get_object_set().count()
+
+    @classmethod
+    async def get(cls, object_id: str) -> "Self | None":
+        """Get an object by ID."""
+        return await cls._get_object_set().get(object_id)
+
+    @classmethod
+    def to_dataframe(cls) -> "pl.DataFrame":
+        """Convert all objects to a Polars DataFrame."""
+        return cls._get_object_set().to_dataframe()
+
+    # ========================================
+    # Instance methods
+    # ========================================
 
     def __init__(self, **data: Any):
         self._data: dict[str, Any] = data

@@ -10,7 +10,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ========================================
@@ -364,10 +364,19 @@ class ListLinkTypesResponse(BaseModel):
 
 
 class ListObjectsResponse(BaseModel):
-    objects: list[ResolvedObject]
-    total: int
-    limit: int
-    offset: int
+    objects: list[ResolvedObject] = []
+    count: int = 0
+
+    @field_validator("objects", mode="before")
+    @classmethod
+    def objects_default(cls, v: Any) -> list[ResolvedObject]:
+        """Convert None to empty list."""
+        return v if v is not None else []
+
+    @property
+    def total(self) -> int:
+        """Alias for count for compatibility."""
+        return self.count
 
 
 class BatchGetObjectsInput(BaseModel):
@@ -381,3 +390,29 @@ class BatchGetObjectsResponse(BaseModel):
 class ActionLogResponse(BaseModel):
     events: list[ActionEvent]
     total: int
+
+
+# ========================================
+# Object Aggregation
+# ========================================
+
+
+class MetricRequest(BaseModel):
+    """Single metric aggregation request."""
+    name: str  # Output field name
+    type: str  # sum | avg | min | max | count | stats
+    field: str = ""  # Field to aggregate (not required for count)
+
+
+class ObjectAggregateRequest(BaseModel):
+    """Request for object data aggregation."""
+    filters: list[SearchFilter] | None = None
+    group_by: list[str] | None = None
+    metrics: list[MetricRequest]
+
+
+class ObjectAggregateResult(BaseModel):
+    """Result of object aggregation."""
+    buckets: list[dict[str, Any]] | None = None
+    metrics: dict[str, Any] | None = None
+    total: int = 0
