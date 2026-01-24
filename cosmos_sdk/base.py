@@ -529,33 +529,17 @@ class ObjectSet(Generic[T]):
         if self._traversal_steps:
             return await self._execute_traversal()
 
-        # Use search endpoint if any query parameters are set
-        # (filters, search query, sort, offset, or limit - search supports more features)
-        # Always use search when limit is set to ensure consistent ordering for pagination
-        needs_search = (
-            self._filters
-            or self._search_query
-            or self._sort_by
-            or self._offset
-            or self._limit
+        # Always use search endpoint - it properly supports:
+        # - Scroll search for unlimited results when limit=0
+        # - Server-side filtering, sorting, aggregations
+        # - Consistent pagination behavior
+        # The list endpoint has a default limit of 100 which is not what we want
+        search_query = SearchQuery(**self._build_search_query())
+        result = await api_client.search_objects(
+            self._object_type_key,
+            search_query,
         )
-
-        if needs_search:
-            # Use search endpoint
-            search_query = SearchQuery(**self._build_search_query())
-            result = await api_client.search_objects(
-                self._object_type_key,
-                search_query,
-            )
-            objects = result.objects
-        else:
-            # Use list endpoint (no params at all)
-            result = await api_client.list_objects(
-                self._object_type_key,
-                limit=self._limit,
-                offset=self._offset,
-            )
-            objects = result.objects
+        objects = result.objects
 
         # Convert to ObjectList
         items = [
