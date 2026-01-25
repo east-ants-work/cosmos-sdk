@@ -1051,7 +1051,7 @@ class ObjectList(Generic[T]):
         for item in self._items:
             rows.append(item._data.copy())
 
-        return pl.DataFrame(rows)
+        return pl.DataFrame(rows, infer_schema_length=None)
 
     def to_list(self) -> list[T]:
         """Return as plain Python list."""
