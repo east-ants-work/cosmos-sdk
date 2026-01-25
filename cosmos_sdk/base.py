@@ -329,10 +329,20 @@ class ObjectSet(Generic[T]):
         new_set._search_query = query
         return new_set
 
-    def select(self, *fields: Property | str) -> Self:
-        """Select specific fields to return."""
+    def select(self, *fields: Property | str | list[str]) -> Self:
+        """Select specific fields to return.
+
+        Can be called as:
+            .select('field1', 'field2')  # Multiple arguments
+            .select(['field1', 'field2'])  # Single list argument
+        """
         new_set = self._copy()
         field_names = []
+
+        # Handle case where a single list is passed
+        if len(fields) == 1 and isinstance(fields[0], list):
+            fields = fields[0]
+
         for f in fields:
             if isinstance(f, Property):
                 field_names.append(f._name)
@@ -1103,8 +1113,13 @@ class BaseObject:
         return cls._get_object_set().offset(n)
 
     @classmethod
-    def select(cls, *fields: str) -> "ObjectSet":
-        """Select specific fields."""
+    def select(cls, *fields: str | list[str]) -> "ObjectSet":
+        """Select specific fields.
+
+        Can be called as:
+            .select('field1', 'field2')  # Multiple arguments
+            .select(['field1', 'field2'])  # Single list argument
+        """
         return cls._get_object_set().select(*fields)
 
     @classmethod
