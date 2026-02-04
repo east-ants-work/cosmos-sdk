@@ -16,6 +16,8 @@ from cosmos_sdk._internal.types import (
     ApplyActionInput,
     BatchGetObjectsInput,
     BatchGetObjectsResponse,
+    CHAggregateRequest,
+    CHAggregateResult,
     CreateEdgeInput,
     CreateLinkTypeInput,
     CreateObjectTypeInput,
@@ -546,6 +548,26 @@ class ObjectDBClient:
             jwt_token=jwt_token,
         )
         return ObjectAggregateResult.model_validate(data)
+
+    async def aggregate_objects_ch(
+        self,
+        request: CHAggregateRequest,
+        tenant_id: str | None = None,
+        jwt_token: str | None = None,
+    ) -> CHAggregateResult:
+        """Aggregate objects using ClickHouse analytics engine.
+
+        This is optimized for large-scale filtering, grouping, and aggregations.
+        Supports count, sum, avg, min, max with filters and ordering.
+        """
+        data = await self._request(
+            "POST",
+            "/api/v1/analytics/objects/aggregate",
+            body=request.model_dump(exclude_none=True),
+            query={"tenant_id": tenant_id},
+            jwt_token=jwt_token,
+        )
+        return CHAggregateResult.model_validate(data)
 
     async def batch_get_objects(
         self,

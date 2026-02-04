@@ -416,3 +416,39 @@ class ObjectAggregateResult(BaseModel):
     buckets: list[dict[str, Any]] | None = None
     metrics: dict[str, Any] | None = None
     total: int = 0
+
+
+# ========================================
+# ClickHouse Analytics Aggregation
+# ========================================
+
+
+class CHMetric(BaseModel):
+    """ClickHouse aggregation metric."""
+    name: str  # Result column name
+    function: Literal["count", "sum", "avg", "min", "max"]
+    field: str | None = None  # Field to aggregate (not required for count)
+
+
+class CHFilter(BaseModel):
+    """ClickHouse aggregation filter."""
+    field: str
+    operator: Literal["eq", "ne", "gt", "gte", "lt", "lte", "in", "like"]
+    value: Any
+
+
+class CHAggregateRequest(BaseModel):
+    """Request for ClickHouse analytics aggregation."""
+    object_type: str
+    group_by: list[str] | None = None
+    metrics: list[CHMetric]
+    filters: list[CHFilter] | None = None
+    order_by: str | None = None
+    order_dir: Literal["asc", "desc"] | None = None
+    limit: int | None = None
+
+
+class CHAggregateResult(BaseModel):
+    """Result of ClickHouse analytics aggregation."""
+    rows: list[dict[str, Any]]
+    total: int = 0
