@@ -7,7 +7,7 @@ Usage:
     from cosmos_sdk.object_action import override, create_object, delete_object
 
     # In Object Action execute function:
-    async def execute(target, actor, context, **params):
+    async def execute(target, actor, **params):
         await override(
             object_type=target["_object_type"],
             object_id=target["_object_id"],
