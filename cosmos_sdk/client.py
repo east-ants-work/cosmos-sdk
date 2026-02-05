@@ -11,6 +11,12 @@ import sys
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from cosmos_sdk._internal.api import ObjectDBClient
+from cosmos_sdk._internal.types import (
+    ClearOverrideResult,
+    CreateObjectResult,
+    OverrideChange,
+    OverrideResult,
+)
 from cosmos_sdk.base import BaseObject, ObjectSet
 
 if TYPE_CHECKING:
@@ -192,6 +198,138 @@ class ObjectsAccessor:
         return list(self._registry.keys())
 
 
+class ObjectDBAccessor:
+    """
+    Accessor for ObjectDB Override API.
+
+    Provides methods for object state transitions used by Object Actions:
+        - override: Apply state changes to objects
+        - create_object: Create new objects
+        - delete_object: Delete an object
+        - clear_override: Revert to Fact values
+
+    Example:
+        result = await cosmos.objectdb.override(
+            object_type="Order",
+            object_ids=["order_123"],
+            changes=[
+                OverrideChange(property="status", op="TRANSITION", value="APPROVED")
+            ],
+            action_id="job_xxx"
+        )
+    """
+
+    def __init__(self, api_client: ObjectDBClient):
+        self._api_client = api_client
+
+    async def override(
+        self,
+        object_type: str,
+        object_ids: list[str],
+        changes: list[OverrideChange],
+        action_id: str | None = None,
+        tenant_id: str | None = None,
+    ) -> OverrideResult:
+        """
+        Apply override changes to objects.
+
+        Args:
+            object_type: Type of the objects to modify
+            object_ids: List of object IDs to apply changes to
+            changes: List of OverrideChange specifications
+            action_id: Optional action ID for audit trail
+            tenant_id: Tenant ID (defaults to 'default')
+
+        Returns:
+            OverrideResult with applied_count and updated_objects
+        """
+        return await self._api_client.override_internal(
+            object_type=object_type,
+            object_ids=object_ids,
+            changes=changes,
+            action_id=action_id,
+            tenant_id=tenant_id,
+        )
+
+    async def create_object(
+        self,
+        object_type: str,
+        object_id: str,
+        properties: dict,
+        tenant_id: str | None = None,
+    ) -> CreateObjectResult:
+        """
+        Create a new object.
+
+        Args:
+            object_type: Type of the object to create
+            object_id: Unique ID for the new object
+            properties: Initial property values
+            tenant_id: Tenant ID (defaults to 'default')
+
+        Returns:
+            CreateObjectResult with the created object info
+        """
+        return await self._api_client.create_object_internal(
+            object_type=object_type,
+            object_id=object_id,
+            properties=properties,
+            tenant_id=tenant_id,
+        )
+
+    async def clear_override(
+        self,
+        object_type: str,
+        object_ids: list[str],
+        properties: list[str],
+        tenant_id: str | None = None,
+    ) -> ClearOverrideResult:
+        """
+        Clear overrides and revert to Fact values.
+
+        Args:
+            object_type: Type of the objects
+            object_ids: List of object IDs
+            properties: List of property names to clear overrides for
+            tenant_id: Tenant ID (defaults to 'default')
+
+        Returns:
+            ClearOverrideResult with cleared_count and updated_objects
+        """
+        return await self._api_client.clear_override_internal(
+            object_type=object_type,
+            object_ids=object_ids,
+            properties=properties,
+            tenant_id=tenant_id,
+        )
+
+    async def delete_object(
+        self,
+        object_type: str,
+        object_id: str,
+        tenant_id: str | None = None,
+    ) -> None:
+        """
+        Delete an object.
+
+        Args:
+            object_type: Type of the object to delete
+            object_id: ID of the object to delete
+            tenant_id: Tenant ID (defaults to 'default')
+
+        Example:
+            await cosmos.objectdb.delete_object(
+                object_type="Order",
+                object_id="order_123"
+            )
+        """
+        await self._api_client.delete_object_internal(
+            object_type=object_type,
+            object_id=object_id,
+            tenant_id=tenant_id,
+        )
+
+
 class CosmosClient:
     """
     Main client for Cosmos SDK (Singleton).
@@ -271,6 +409,9 @@ class CosmosClient:
 
         # Objects accessor
         self.objects = ObjectsAccessor(self, self._object_registry)
+
+        # ObjectDB accessor (for Override API - used by Object Actions)
+        self.objectdb = ObjectDBAccessor(self._api_client)
 
         self._initialized = True
 

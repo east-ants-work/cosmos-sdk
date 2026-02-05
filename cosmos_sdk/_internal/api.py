@@ -18,8 +18,11 @@ from cosmos_sdk._internal.types import (
     BatchGetObjectsResponse,
     CHAggregateRequest,
     CHAggregateResult,
+    ClearOverrideResult,
     CreateEdgeInput,
     CreateLinkTypeInput,
+    CreateObjectInput,
+    CreateObjectResult,
     CreateObjectTypeInput,
     Edge,
     FindPathsRequest,
@@ -31,6 +34,8 @@ from cosmos_sdk._internal.types import (
     ObjectAggregateRequest,
     ObjectAggregateResult,
     ObjectType,
+    OverrideChange,
+    OverrideResult,
     ResolvedObject,
     SearchQuery,
     SearchResult,
@@ -743,3 +748,261 @@ class ObjectDBClient:
             jwt_token=jwt_token,
         )
         return FindPathsResult.model_validate(data)
+
+    # ========================================
+    # Override API (Object Actions)
+    # ========================================
+
+    async def override(
+        self,
+        object_type: str,
+        object_ids: list[str],
+        changes: list[OverrideChange],
+        action_id: str | None = None,
+        tenant_id: str | None = None,
+        jwt_token: str | None = None,
+    ) -> OverrideResult:
+        """
+        Apply override changes to objects.
+
+        Used by Object Actions to modify object state through the ObjectDB Override API.
+
+        Args:
+            object_type: Type of the objects to modify
+            object_ids: List of object IDs to apply changes to
+            changes: List of OverrideChange specifications
+            action_id: Optional action ID for audit trail
+            tenant_id: Tenant ID (defaults to 'default')
+            jwt_token: Override JWT token for this request
+
+        Returns:
+            OverrideResult with applied_count and updated_objects
+
+        Example:
+            result = await client.override(
+                object_type="Order",
+                object_ids=["order_123"],
+                changes=[
+                    OverrideChange(property="status", op="TRANSITION", value="APPROVED"),
+                    OverrideChange(property="approvedAt", op="SET", value="2026-02-05T10:00:00Z")
+                ],
+                action_id="job_xxx"
+            )
+        """
+        data = await self._request(
+            "POST",
+            "/api/v1/overrides/apply",
+            body={
+                "object_type": object_type,
+                "object_ids": object_ids,
+                "changes": [c.model_dump(exclude_none=True) for c in changes],
+                "action_id": action_id,
+            },
+            query={"tenant_id": tenant_id},
+            jwt_token=jwt_token,
+        )
+        return OverrideResult.model_validate(data)
+
+    async def override_internal(
+        self,
+        object_type: str,
+        object_ids: list[str],
+        changes: list[OverrideChange],
+        action_id: str | None = None,
+        tenant_id: str | None = None,
+    ) -> OverrideResult:
+        """
+        Apply override changes using internal endpoint (no auth).
+
+        For cluster-internal use only.
+        """
+        data = await self._request(
+            "POST",
+            "/internal/overrides/apply",
+            body={
+                "object_type": object_type,
+                "object_ids": object_ids,
+                "changes": [c.model_dump(exclude_none=True) for c in changes],
+                "action_id": action_id,
+            },
+            query={"tenant_id": tenant_id},
+        )
+        return OverrideResult.model_validate(data)
+
+    async def create_object(
+        self,
+        object_type: str,
+        object_id: str,
+        properties: dict,
+        tenant_id: str | None = None,
+        jwt_token: str | None = None,
+    ) -> CreateObjectResult:
+        """
+        Create a new object.
+
+        Args:
+            object_type: Type of the object to create
+            object_id: Unique ID for the new object
+            properties: Initial property values
+            tenant_id: Tenant ID (defaults to 'default')
+            jwt_token: Override JWT token for this request
+
+        Returns:
+            CreateObjectResult with the created object info
+
+        Example:
+            result = await client.create_object(
+                object_type="Order",
+                object_id="order_001",
+                properties={
+                    "status": "REQUESTED",
+                    "amount": 50000,
+                    "requesterId": "user_123"
+                }
+            )
+        """
+        data = await self._request(
+            "POST",
+            f"/api/v1/objects/{object_type}",
+            body={
+                "object_id": object_id,
+                "properties": properties,
+            },
+            query={"tenant_id": tenant_id},
+            jwt_token=jwt_token,
+        )
+        return CreateObjectResult.model_validate(data)
+
+    async def create_object_internal(
+        self,
+        object_type: str,
+        object_id: str,
+        properties: dict,
+        tenant_id: str | None = None,
+    ) -> CreateObjectResult:
+        """
+        Create a new object using internal endpoint (no auth).
+
+        For cluster-internal use only.
+        """
+        data = await self._request(
+            "POST",
+            f"/internal/objects/{object_type}",
+            body={
+                "object_id": object_id,
+                "properties": properties,
+            },
+            query={"tenant_id": tenant_id},
+        )
+        return CreateObjectResult.model_validate(data)
+
+    async def clear_override(
+        self,
+        object_type: str,
+        object_ids: list[str],
+        properties: list[str],
+        tenant_id: str | None = None,
+        jwt_token: str | None = None,
+    ) -> ClearOverrideResult:
+        """
+        Clear overrides and revert to Fact values.
+
+        Args:
+            object_type: Type of the objects
+            object_ids: List of object IDs
+            properties: List of property names to clear overrides for
+            tenant_id: Tenant ID (defaults to 'default')
+            jwt_token: Override JWT token for this request
+
+        Returns:
+            ClearOverrideResult with cleared_count and updated_objects
+
+        Example:
+            result = await client.clear_override(
+                object_type="Order",
+                object_ids=["order_123"],
+                properties=["status", "approvedAt"]
+            )
+        """
+        data = await self._request(
+            "POST",
+            "/api/v1/overrides/clear",
+            body={
+                "object_type": object_type,
+                "object_ids": object_ids,
+                "properties": properties,
+            },
+            query={"tenant_id": tenant_id},
+            jwt_token=jwt_token,
+        )
+        return ClearOverrideResult.model_validate(data)
+
+    async def clear_override_internal(
+        self,
+        object_type: str,
+        object_ids: list[str],
+        properties: list[str],
+        tenant_id: str | None = None,
+    ) -> ClearOverrideResult:
+        """
+        Clear overrides using internal endpoint (no auth).
+
+        For cluster-internal use only.
+        """
+        data = await self._request(
+            "POST",
+            "/internal/overrides/clear",
+            body={
+                "object_type": object_type,
+                "object_ids": object_ids,
+                "properties": properties,
+            },
+            query={"tenant_id": tenant_id},
+        )
+        return ClearOverrideResult.model_validate(data)
+
+    async def delete_object(
+        self,
+        object_type: str,
+        object_id: str,
+        tenant_id: str | None = None,
+        jwt_token: str | None = None,
+    ) -> None:
+        """
+        Delete an object.
+
+        Args:
+            object_type: Type of the object to delete
+            object_id: ID of the object to delete
+            tenant_id: Tenant ID (defaults to 'default')
+            jwt_token: Override JWT token for this request
+
+        Example:
+            await client.delete_object(
+                object_type="Order",
+                object_id="order_123"
+            )
+        """
+        await self._request(
+            "DELETE",
+            f"/api/v1/objects/{object_type}/{object_id}",
+            query={"tenant_id": tenant_id},
+            jwt_token=jwt_token,
+        )
+
+    async def delete_object_internal(
+        self,
+        object_type: str,
+        object_id: str,
+        tenant_id: str | None = None,
+    ) -> None:
+        """
+        Delete an object using internal endpoint (no auth).
+
+        For cluster-internal use only.
+        """
+        await self._request(
+            "DELETE",
+            f"/internal/objects/{object_type}/{object_id}",
+            query={"tenant_id": tenant_id},
+        )

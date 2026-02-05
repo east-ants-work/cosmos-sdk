@@ -452,3 +452,59 @@ class CHAggregateResult(BaseModel):
     """Result of ClickHouse analytics aggregation."""
     rows: list[dict[str, Any]]
     total: int = 0
+
+
+# ========================================
+# Object Action Override API
+# ========================================
+
+
+class OverrideChange(BaseModel):
+    """
+    Change specification for ObjectDB Override API.
+
+    Used by Object Actions to apply state transitions.
+
+    Example:
+        OverrideChange(property="status", op="TRANSITION", value="APPROVED")
+        OverrideChange(property="approvedAt", op="SET", value=datetime.now().isoformat())
+    """
+    property: str
+    op: AllowedOperation
+    value: Any | None = None
+
+
+class OverrideResult(BaseModel):
+    """Result of an override operation."""
+    applied_count: int
+    updated_objects: list[ResolvedObject] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CreateObjectInput(BaseModel):
+    """Input for creating a new object."""
+    object_id: str
+    properties: dict[str, Any]
+
+
+class CreateObjectResult(BaseModel):
+    """Result of object creation."""
+    tenant_id: str
+    object_type: str
+    object_id: str
+    effective_state: dict[str, Any]
+    version: int
+    created_at: str
+
+
+class ClearOverrideInput(BaseModel):
+    """Input for clearing overrides."""
+    object_type: str
+    object_ids: list[str]
+    properties: list[str]
+
+
+class ClearOverrideResult(BaseModel):
+    """Result of clearing overrides."""
+    cleared_count: int
+    updated_objects: list[ResolvedObject] = Field(default_factory=list)

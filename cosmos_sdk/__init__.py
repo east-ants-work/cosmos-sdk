@@ -28,7 +28,7 @@ Legacy compatibility (deprecated):
     df = getObject("Customer", filters={"status": "active"})
 """
 
-from cosmos_sdk.client import CosmosClient, create_client
+from cosmos_sdk.client import CosmosClient, ObjectDBAccessor, create_client
 from cosmos_sdk.base import (
     Agg,
     BaseObject,
@@ -38,6 +38,27 @@ from cosmos_sdk.base import (
     ObjectSet,
     Property,
     PropertyComparison,
+)
+from cosmos_sdk._internal.types import (
+    OverrideChange,
+    OverrideResult,
+    CreateObjectResult,
+    ClearOverrideResult,
+    AllowedOperation,
+)
+# Object Action operations (new clean API)
+from cosmos_sdk.object_action import (
+    override,
+    create_object,
+    delete_object,
+    clear_override,
+    SET,
+    TRANSITION,
+    INCREMENT,
+    DECREMENT,
+    APPEND,
+    REMOVE,
+    set_cosmos_context,
 )
 
 __version__ = "0.1.0"
@@ -56,4 +77,23 @@ __all__ = [
     "GroupedObjectSet",
     # Filtering
     "PropertyComparison",
+    # ObjectDB Override API (legacy, for backward compatibility)
+    "ObjectDBAccessor",
+    "OverrideChange",
+    "OverrideResult",
+    "CreateObjectResult",
+    "ClearOverrideResult",
+    "AllowedOperation",
+    # Object Action operations (new clean API)
+    "override",
+    "create_object",
+    "delete_object",
+    "clear_override",
+    "SET",
+    "TRANSITION",
+    "INCREMENT",
+    "DECREMENT",
+    "APPEND",
+    "REMOVE",
+    "set_cosmos_context",
 ]
