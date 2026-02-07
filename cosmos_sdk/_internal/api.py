@@ -215,18 +215,6 @@ class ObjectDBClient:
         )
         return ListObjectTypesResponse.model_validate(data)
 
-    async def list_object_types_internal(
-        self,
-        tenant_id: str | None = None,
-    ) -> ListObjectTypesResponse:
-        """List object types using internal endpoint (no auth)."""
-        data = await self._request(
-            "GET",
-            "/internal/types",
-            query={"tenant_id": tenant_id},
-        )
-        return ListObjectTypesResponse.model_validate(data)
-
     async def get_object_type(
         self,
         type_key: str,
@@ -258,27 +246,6 @@ class ObjectDBClient:
                 f"/api/v1/types/by-name/{encoded_name}",
                 query={"tenant_id": tenant_id, "graph_key": graph_key},
                 jwt_token=jwt_token,
-            )
-            return ObjectType.model_validate(data)
-        except ObjectDBError as e:
-            if e.status_code == 404:
-                return None
-            raise
-
-    async def get_object_type_by_name_internal(
-        self,
-        name: str,
-        graph_key: str | None = None,
-        tenant_id: str | None = None,
-    ) -> ObjectType | None:
-        """Get object type by name using internal endpoint."""
-        try:
-            # URL-encode the name to handle spaces and special characters
-            encoded_name = quote(name, safe="")
-            data = await self._request(
-                "GET",
-                f"/internal/types/by-name/{encoded_name}",
-                query={"tenant_id": tenant_id, "graph_key": graph_key},
             )
             return ObjectType.model_validate(data)
         except ObjectDBError as e:
@@ -393,35 +360,6 @@ class ObjectDBClient:
                     "target_type": target_type,
                 },
                 jwt_token=jwt_token,
-            )
-            return (
-                LinkType.model_validate(data["link_type"]),
-                data.get("reverse", False),
-            )
-        except ObjectDBError as e:
-            if e.status_code == 404:
-                return None
-            raise
-
-    async def get_link_type_by_name_internal(
-        self,
-        name: str,
-        source_type: str | None = None,
-        target_type: str | None = None,
-        tenant_id: str | None = None,
-    ) -> tuple[LinkType, bool] | None:
-        """Get link type by name using internal endpoint."""
-        try:
-            # URL-encode the name to handle spaces and special characters
-            encoded_name = quote(name, safe="")
-            data = await self._request(
-                "GET",
-                f"/internal/links/by-name/{encoded_name}",
-                query={
-                    "tenant_id": tenant_id,
-                    "source_type": source_type,
-                    "target_type": target_type,
-                },
             )
             return (
                 LinkType.model_validate(data["link_type"]),
@@ -803,32 +741,6 @@ class ObjectDBClient:
         )
         return OverrideResult.model_validate(data)
 
-    async def override_internal(
-        self,
-        object_type: str,
-        object_ids: list[str],
-        changes: list[OverrideChange],
-        action_id: str | None = None,
-        tenant_id: str | None = None,
-    ) -> OverrideResult:
-        """
-        Apply override changes using internal endpoint (no auth).
-
-        For cluster-internal use only.
-        """
-        data = await self._request(
-            "POST",
-            "/internal/overrides/apply",
-            body={
-                "object_type": object_type,
-                "object_ids": object_ids,
-                "changes": [c.model_dump(exclude_none=True) for c in changes],
-                "action_id": action_id,
-            },
-            query={"tenant_id": tenant_id},
-        )
-        return OverrideResult.model_validate(data)
-
     async def create_object(
         self,
         object_type: str,
@@ -873,29 +785,6 @@ class ObjectDBClient:
         )
         return CreateObjectResult.model_validate(data)
 
-    async def create_object_internal(
-        self,
-        object_type: str,
-        object_id: str,
-        properties: dict,
-        tenant_id: str | None = None,
-    ) -> CreateObjectResult:
-        """
-        Create a new object using internal endpoint (no auth).
-
-        For cluster-internal use only.
-        """
-        data = await self._request(
-            "POST",
-            f"/internal/objects/{object_type}",
-            body={
-                "object_id": object_id,
-                "properties": properties,
-            },
-            query={"tenant_id": tenant_id},
-        )
-        return CreateObjectResult.model_validate(data)
-
     async def clear_override(
         self,
         object_type: str,
@@ -937,30 +826,6 @@ class ObjectDBClient:
         )
         return ClearOverrideResult.model_validate(data)
 
-    async def clear_override_internal(
-        self,
-        object_type: str,
-        object_ids: list[str],
-        properties: list[str],
-        tenant_id: str | None = None,
-    ) -> ClearOverrideResult:
-        """
-        Clear overrides using internal endpoint (no auth).
-
-        For cluster-internal use only.
-        """
-        data = await self._request(
-            "POST",
-            "/internal/overrides/clear",
-            body={
-                "object_type": object_type,
-                "object_ids": object_ids,
-                "properties": properties,
-            },
-            query={"tenant_id": tenant_id},
-        )
-        return ClearOverrideResult.model_validate(data)
-
     async def delete_object(
         self,
         object_type: str,
@@ -990,19 +855,3 @@ class ObjectDBClient:
             jwt_token=jwt_token,
         )
 
-    async def delete_object_internal(
-        self,
-        object_type: str,
-        object_id: str,
-        tenant_id: str | None = None,
-    ) -> None:
-        """
-        Delete an object using internal endpoint (no auth).
-
-        For cluster-internal use only.
-        """
-        await self._request(
-            "DELETE",
-            f"/internal/objects/{object_type}/{object_id}",
-            query={"tenant_id": tenant_id},
-        )

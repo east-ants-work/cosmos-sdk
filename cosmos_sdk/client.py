@@ -243,7 +243,7 @@ class ObjectDBAccessor:
         Returns:
             OverrideResult with applied_count and updated_objects
         """
-        return await self._api_client.override_internal(
+        return await self._api_client.override(
             object_type=object_type,
             object_ids=object_ids,
             changes=changes,
@@ -270,7 +270,7 @@ class ObjectDBAccessor:
         Returns:
             CreateObjectResult with the created object info
         """
-        return await self._api_client.create_object_internal(
+        return await self._api_client.create_object(
             object_type=object_type,
             object_id=object_id,
             properties=properties,
@@ -296,7 +296,7 @@ class ObjectDBAccessor:
         Returns:
             ClearOverrideResult with cleared_count and updated_objects
         """
-        return await self._api_client.clear_override_internal(
+        return await self._api_client.clear_override(
             object_type=object_type,
             object_ids=object_ids,
             properties=properties,
@@ -323,7 +323,7 @@ class ObjectDBAccessor:
                 object_id="order_123"
             )
         """
-        await self._api_client.delete_object_internal(
+        await self._api_client.delete_object(
             object_type=object_type,
             object_id=object_id,
             tenant_id=tenant_id,

@@ -63,7 +63,7 @@ class CodeGenerator:
             Dictionary with 'objects' and 'links' keys containing generated file paths
         """
         # Fetch object types
-        object_types_response = await api_client.list_object_types_internal(tenant_id)
+        object_types_response = await api_client.list_object_types(tenant_id)
         object_types = object_types_response.object_types
 
         # Fetch link types
