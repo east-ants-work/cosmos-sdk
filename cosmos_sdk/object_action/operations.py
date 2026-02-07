@@ -6,7 +6,7 @@ Provides a clean API for Object Actions to perform state transitions.
 Usage:
     from cosmos_sdk.object_action import override, create_object, delete_object, SET
 
-    async def execute(target, actor, **params):
+    async def execute(target, **params):
         # Clean API - pass target directly
         await override(target, operations=[SET("status", "approved")])
         await delete_object(target)
