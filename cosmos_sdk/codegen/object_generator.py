@@ -27,14 +27,16 @@ PROPERTY_TYPE_MAP = {
 
 
 def to_snake_case(name: str) -> str:
-    """Convert CamelCase to snake_case."""
+    """Convert CamelCase or space-separated to snake_case."""
+    name = re.sub(r"\s+", "_", name)
     s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+    result = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+    return re.sub("_+", "_", result)
 
 
 def to_pascal_case(name: str) -> str:
-    """Convert snake_case to PascalCase."""
-    return "".join(word.capitalize() for word in name.split("_"))
+    """Convert snake_case or space-separated to PascalCase."""
+    return "".join(word.capitalize() for word in re.split(r"[_\s]+", name) if word)
 
 
 def safe_identifier(name: str) -> str:
