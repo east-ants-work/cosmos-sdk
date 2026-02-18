@@ -1,10 +1,10 @@
 """
-Object Action operations.
+Action operations.
 
-Provides a clean API for Object Actions to perform state transitions.
+Provides a clean API for Actions to perform state transitions.
 
 Usage:
-    from cosmos_sdk.object_action import override, create_object, delete_object, SET
+    from cosmos_sdk.action import override, create_object, delete_object, SET
 
     async def execute(target, **params):
         # Clean API - pass target directly
@@ -23,7 +23,7 @@ from cosmos_sdk._internal.types import (
     CreateObjectResult,
     ClearOverrideResult,
 )
-from cosmos_sdk.object_action.context import get_cosmos_context
+from cosmos_sdk.action.context import get_cosmos_context
 
 
 # ========================================
@@ -90,7 +90,7 @@ async def override(
         OverrideResult with applied_count and updated_objects
 
     Example:
-        from cosmos_sdk.object_action import override, SET, TRANSITION
+        from cosmos_sdk.action import override, SET, TRANSITION
 
         # Clean way - pass target directly
         await override(target, operations=[
@@ -145,7 +145,7 @@ async def create_object(
         CreateObjectResult with the created object info
 
     Example:
-        from cosmos_sdk.object_action import create_object
+        from cosmos_sdk.action import create_object
 
         result = await create_object(
             object_type="AuditLog",
@@ -183,7 +183,7 @@ async def delete_object(
         tenant_id: Tenant ID (defaults to 'default')
 
     Example:
-        from cosmos_sdk.object_action import delete_object
+        from cosmos_sdk.action import delete_object
 
         # Clean way - pass target directly
         await delete_object(target)
@@ -232,7 +232,7 @@ async def clear_override(
         ClearOverrideResult with cleared_count and updated_objects
 
     Example:
-        from cosmos_sdk.object_action import clear_override
+        from cosmos_sdk.action import clear_override
 
         # Clean way - pass target directly
         await clear_override(target, properties=["status", "approved_at"])

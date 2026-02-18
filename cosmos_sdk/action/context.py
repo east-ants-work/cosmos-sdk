@@ -1,9 +1,9 @@
 """
-Context management for Object Actions.
+Context management for Actions.
 
 Uses Python's contextvars for async-safe context storage.
 The cosmos_sdk instance is set by the execution runtime before
-running an Object Action, making it available to operations.
+running an Action, making it available to operations.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def set_cosmos_context(objectdb: ObjectDBAccessor) -> None:
     """
     Set the ObjectDB accessor for the current async context.
 
-    Called by the Object Action execution runtime before running execute().
+    Called by the Action execution runtime before running execute().
     """
     _objectdb_context.set(objectdb)
 
@@ -34,13 +34,13 @@ def get_cosmos_context() -> ObjectDBAccessor:
     Get the ObjectDB accessor from the current async context.
 
     Raises:
-        RuntimeError: If called outside of an Object Action context.
+        RuntimeError: If called outside of an Action context.
     """
     objectdb = _objectdb_context.get()
     if objectdb is None:
         raise RuntimeError(
             "cosmos_sdk context not set. "
-            "This function must be called within an Object Action execute() function."
+            "This function must be called within an Action execute() function."
         )
     return objectdb
 

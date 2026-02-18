@@ -46,8 +46,8 @@ from cosmos_sdk._internal.types import (
     ClearOverrideResult,
     AllowedOperation,
 )
-# Object Action operations (new clean API)
-from cosmos_sdk.object_action import (
+# Action operations (clean API)
+from cosmos_sdk.action import (
     override,
     create_object,
     delete_object,
@@ -84,7 +84,7 @@ __all__ = [
     "CreateObjectResult",
     "ClearOverrideResult",
     "AllowedOperation",
-    # Object Action operations (new clean API)
+    # Action operations (clean API)
     "override",
     "create_object",
     "delete_object",
