@@ -292,18 +292,13 @@ class SparkObjectSet:
     # ------------------------------------------------------------------
 
     def _load_api(self) -> DataFrame:
-        """Load data from Cosmos API endpoint."""
+        """Load data from Cosmos API endpoint (POST /api/objects/:key/preview)."""
         if not self._base_url:
             raise ValueError("base_url is required for 'api' backend")
 
-        # Build request for /api/objects/{type}/preview
         url = f"{self._base_url}/api/objects/{self._object_type_key}/preview"
-        params = self._build_http_params()
-        if params:
-            query_string = "&".join(f"{k}={v}" for k, v in params.items())
-            url = f"{url}?{query_string}"
-
-        data = self._http_get(url)
+        body = self._build_api_body()
+        data = self._http_post(url, body)
         return self._json_to_dataframe(data)
 
     def _load_objectdb(self) -> DataFrame:
@@ -337,6 +332,22 @@ class SparkObjectSet:
         if self._offset_val:
             params["offset"] = str(self._offset_val)
         return params
+
+    def _build_api_body(self) -> dict[str, Any]:
+        """Build POST body for Cosmos API /api/objects/:key/preview."""
+        body: dict[str, Any] = {}
+
+        if self._filters:
+            body["filters"] = self._flatten_filters(self._filters)
+
+        if self._limit_val:
+            body["limit"] = self._limit_val
+        if self._offset_val:
+            body["offset"] = self._offset_val
+        if self._selected_fields:
+            body["select"] = self._selected_fields
+
+        return body
 
     def _build_search_body(self) -> dict[str, Any]:
         """Build search request body for ObjectDB."""

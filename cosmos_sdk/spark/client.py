@@ -58,9 +58,15 @@ class SparkObjectsAccessor:
         if name in self._registry:
             obj_type, obj_type_key = self._registry[name]
         else:
-            # Fallback: use name as both type and type_key
-            obj_type = name
-            obj_type_key = name.lower()
+            # Look up typeKey from object_metadata (set by executor)
+            meta = self._client._object_metadata.get(name)
+            if meta and isinstance(meta, dict) and "typeKey" in meta:
+                obj_type = name
+                obj_type_key = meta["typeKey"]
+            else:
+                # Fallback: use name as both type and type_key
+                obj_type = name
+                obj_type_key = name.lower()
 
         return SparkObjectSet(
             spark=self._client._spark,
