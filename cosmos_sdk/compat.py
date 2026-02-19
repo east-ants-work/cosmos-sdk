@@ -18,7 +18,12 @@ import asyncio
 import warnings
 from typing import Any
 
-import polars as pl
+from cosmos_sdk.base import HAS_POLARS
+
+try:
+    import polars as pl
+except ImportError:
+    pl = None  # type: ignore[assignment]
 
 from cosmos_sdk.client import CosmosClient
 

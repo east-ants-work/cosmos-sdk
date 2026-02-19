@@ -17,7 +17,13 @@ from typing import (
     overload,
 )
 
-import polars as pl
+try:
+    import polars as pl
+
+    HAS_POLARS = True
+except ImportError:
+    pl = None  # type: ignore[assignment]
+    HAS_POLARS = False
 
 if TYPE_CHECKING:
     from cosmos_sdk.client import CosmosClient
@@ -777,6 +783,9 @@ class ObjectSet(Generic[T]):
         Note: This is a synchronous convenience method.
         For async code, use `list()` then `to_dataframe()` on the result.
         """
+        if not HAS_POLARS:
+            raise ImportError("polars is required for to_dataframe(). Install with: pip install cosmos-sdk[polars]")
+
         import asyncio
 
         result = asyncio.get_event_loop().run_until_complete(self.list())
@@ -1009,6 +1018,9 @@ class GroupedObjectSet(Generic[T]):
 
     def to_dataframe(self) -> pl.DataFrame:
         """Execute and return results as Polars DataFrame."""
+        if not HAS_POLARS:
+            raise ImportError("polars is required for to_dataframe(). Install with: pip install cosmos-sdk[polars]")
+
         import asyncio
 
         results = asyncio.get_event_loop().run_until_complete(self.list())
@@ -1044,6 +1056,9 @@ class ObjectList(Generic[T]):
 
     def to_dataframe(self) -> pl.DataFrame:
         """Convert to Polars DataFrame."""
+        if not HAS_POLARS:
+            raise ImportError("polars is required for to_dataframe(). Install with: pip install cosmos-sdk[polars]")
+
         if not self._items:
             return pl.DataFrame()
 
@@ -1155,6 +1170,8 @@ class BaseObject:
     @classmethod
     def to_dataframe(cls) -> "pl.DataFrame":
         """Convert all objects to a Polars DataFrame."""
+        if not HAS_POLARS:
+            raise ImportError("polars is required for to_dataframe(). Install with: pip install cosmos-sdk[polars]")
         return cls._get_object_set().to_dataframe()
 
     # ========================================
