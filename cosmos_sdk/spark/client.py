@@ -9,7 +9,6 @@ Usage:
 
     client = SparkClient(spark=spark, backend="iceberg", object_metadata={...})
     df = client.objects.Customer.to_dataframe()
-    df = client.getObject("Customer")
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from cosmos_sdk.base import BaseObject
 from cosmos_sdk.spark.object_set import SparkObjectSet
 
 if TYPE_CHECKING:
-    from pyspark.sql import DataFrame, SparkSession
+    from pyspark.sql import SparkSession
 
 
 class SparkObjectsAccessor:
@@ -108,36 +107,3 @@ class SparkClient:
         self._security_rules = security_rules or {}
         self._timeout = timeout
         self.objects = SparkObjectsAccessor(self)
-
-    def getObject(
-        self,
-        object_name: str,
-        filters: dict[str, Any] | None = None,
-        limit: int | None = None,
-    ) -> DataFrame:
-        """
-        Legacy-style object access — returns a PySpark DataFrame.
-
-        This provides backward compatibility with the existing getObject() pattern
-        used in Spark executor code.
-
-        Args:
-            object_name: Name of the object type (e.g., "Customer")
-            filters: Optional dict of field -> value equality filters
-            limit: Optional limit on number of rows
-
-        Returns:
-            PySpark DataFrame
-        """
-        obj_set: SparkObjectSet = getattr(self.objects, object_name)
-
-        if filters:
-            from cosmos_sdk.base import PropertyComparison
-
-            for field, value in filters.items():
-                obj_set = obj_set.where(PropertyComparison(field, "eq", value))
-
-        if limit:
-            obj_set = obj_set.limit(limit)
-
-        return obj_set.to_dataframe()

@@ -9,7 +9,6 @@ Usage:
 
     client = SparkClient(spark=spark, backend="iceberg")
     df = client.objects.Customer.to_dataframe()
-    df = client.getObject("Customer")
 """
 
 from cosmos_sdk.spark.client import SparkClient
