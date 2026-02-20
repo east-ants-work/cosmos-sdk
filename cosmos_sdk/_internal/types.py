@@ -6,11 +6,25 @@ These types mirror the Go domain models in ObjectDB service.
 
 from __future__ import annotations
 
-from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _to_camel(snake_str: str) -> str:
+    """Convert snake_case to camelCase."""
+    components = snake_str.split("_")
+    return components[0] + "".join(x.capitalize() for x in components[1:])
+
+
+class CamelModel(BaseModel):
+    """Base model that accepts both camelCase and snake_case fields."""
+
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+    )
 
 
 # ========================================
@@ -86,12 +100,12 @@ class JobStatus(str, Enum):
 # ========================================
 
 
-class StateMachine(BaseModel):
+class StateMachine(CamelModel):
     initial_state: str
     transitions: dict[str, list[str]]  # current_state -> allowed_next_states
 
 
-class PropertyDefinition(BaseModel):
+class PropertyDefinition(CamelModel):
     name: str
     key: str | None = None
     type: PropertyType
@@ -103,10 +117,10 @@ class PropertyDefinition(BaseModel):
     state_machine: StateMachine | None = None
     expression: str | None = None
     description: str | None = None
-    deprecated_at: str | None = Field(None, alias="deprecatedAt")
+    deprecated_at: str | None = None
 
 
-class ObjectType(BaseModel):
+class ObjectType(CamelModel):
     tenant_id: str
     type_key: str
     name: str
@@ -121,7 +135,7 @@ class ObjectType(BaseModel):
     last_sync_at: str | None = None
 
 
-class CreateObjectTypeInput(BaseModel):
+class CreateObjectTypeInput(CamelModel):
     type_key: str
     name: str
     description: str | None = None
@@ -131,7 +145,7 @@ class CreateObjectTypeInput(BaseModel):
     properties: list[PropertyDefinition]
 
 
-class UpdateObjectTypeInput(BaseModel):
+class UpdateObjectTypeInput(CamelModel):
     name: str | None = None
     description: str | None = None
     backing_dataset: str | None = None
@@ -145,13 +159,13 @@ class UpdateObjectTypeInput(BaseModel):
 # ========================================
 
 
-class ForeignKeyConfig(BaseModel):
+class ForeignKeyConfig(CamelModel):
     source_field: str
     target_pk_field: str
     auto_sync: bool = False
 
 
-class LinkType(BaseModel):
+class LinkType(CamelModel):
     tenant_id: str
     link_type_key: str
     name: str
@@ -164,7 +178,7 @@ class LinkType(BaseModel):
     updated_at: str | None = None
 
 
-class CreateLinkTypeInput(BaseModel):
+class CreateLinkTypeInput(CamelModel):
     link_type_key: str
     name: str
     source_type: str
@@ -174,7 +188,7 @@ class CreateLinkTypeInput(BaseModel):
     fk_config: ForeignKeyConfig | None = None
 
 
-class UpdateLinkTypeInput(BaseModel):
+class UpdateLinkTypeInput(CamelModel):
     name: str | None = None
     source_type: str | None = None
     target_type: str | None = None
@@ -183,7 +197,7 @@ class UpdateLinkTypeInput(BaseModel):
     fk_config: ForeignKeyConfig | None = None
 
 
-class Edge(BaseModel):
+class Edge(CamelModel):
     tenant_id: str
     link_type: str
     source_id: str
@@ -192,7 +206,7 @@ class Edge(BaseModel):
     created_at: str
 
 
-class CreateEdgeInput(BaseModel):
+class CreateEdgeInput(CamelModel):
     link_type: str
     source_id: str
     target_id: str
@@ -204,7 +218,7 @@ class CreateEdgeInput(BaseModel):
 # ========================================
 
 
-class Override(BaseModel):
+class Override(CamelModel):
     value: Any
     override_ts: str
     actor: str
@@ -212,7 +226,7 @@ class Override(BaseModel):
     active: bool
 
 
-class ResolvedObject(BaseModel):
+class ResolvedObject(CamelModel):
     tenant_id: str
     object_type: str
     object_id: str
@@ -230,13 +244,13 @@ class ResolvedObject(BaseModel):
 # ========================================
 
 
-class PropertyChange(BaseModel):
+class PropertyChange(CamelModel):
     property: str
     op: AllowedOperation
     value: Any | None = None
 
 
-class ActionEvent(BaseModel):
+class ActionEvent(CamelModel):
     event_id: str
     tenant_id: str
     object_type: str
@@ -247,7 +261,7 @@ class ActionEvent(BaseModel):
     idempotency_key: str | None = None
 
 
-class ApplyActionInput(BaseModel):
+class ApplyActionInput(CamelModel):
     object_type: str
     object_ids: list[str]
     changes: list[PropertyChange]
@@ -259,13 +273,13 @@ class ApplyActionInput(BaseModel):
 # ========================================
 
 
-class SearchFilter(BaseModel):
+class SearchFilter(CamelModel):
     field: str
     op: SearchOp
     value: Any
 
 
-class SearchQuery(BaseModel):
+class SearchQuery(CamelModel):
     query: str | None = None
     filters: list[SearchFilter] | None = None
     sort_by: str | None = None
@@ -274,7 +288,7 @@ class SearchQuery(BaseModel):
     offset: int | None = None
 
 
-class SearchResult(BaseModel):
+class SearchResult(CamelModel):
     objects: list[ResolvedObject]
     total: int
     limit: int
@@ -286,18 +300,18 @@ class SearchResult(BaseModel):
 # ========================================
 
 
-class TraversalStep(BaseModel):
+class TraversalStep(CamelModel):
     link_type: str
     direction: EdgeDirection
 
 
-class TraversalFilter(BaseModel):
+class TraversalFilter(CamelModel):
     field: str
     op: str
     value: Any
 
 
-class TraversalRequest(BaseModel):
+class TraversalRequest(CamelModel):
     start_id: str
     start_type: str
     steps: list[TraversalStep]
@@ -305,12 +319,12 @@ class TraversalRequest(BaseModel):
     limit: int | None = None
 
 
-class TraversalPath(BaseModel):
+class TraversalPath(CamelModel):
     nodes: list[str]
     edges: list[Edge]
 
 
-class TraversalResult(BaseModel):
+class TraversalResult(CamelModel):
     paths: list[TraversalPath]
     objects: list[ResolvedObject]
     total: int
@@ -321,14 +335,14 @@ class TraversalResult(BaseModel):
 # ========================================
 
 
-class FindPathsRequest(BaseModel):
+class FindPathsRequest(CamelModel):
     start_type: str
     end_type: str
     max_depth: int | None = None
     limit: int | None = None
 
 
-class TypePathEdge(BaseModel):
+class TypePathEdge(CamelModel):
     link_type_key: str
     name: str
     source_type: str
@@ -336,13 +350,13 @@ class TypePathEdge(BaseModel):
     reverse: bool
 
 
-class TypePath(BaseModel):
+class TypePath(CamelModel):
     nodes: list[str]
     edges: list[TypePathEdge]
     length: int
 
 
-class FindPathsResult(BaseModel):
+class FindPathsResult(CamelModel):
     paths: list[TypePath]
     total: int
     truncated: bool
@@ -353,17 +367,17 @@ class FindPathsResult(BaseModel):
 # ========================================
 
 
-class ListObjectTypesResponse(BaseModel):
+class ListObjectTypesResponse(CamelModel):
     object_types: list[ObjectType]
     count: int
 
 
-class ListLinkTypesResponse(BaseModel):
+class ListLinkTypesResponse(CamelModel):
     link_types: list[LinkType]
     count: int
 
 
-class ListObjectsResponse(BaseModel):
+class ListObjectsResponse(CamelModel):
     objects: list[ResolvedObject] = []
     count: int = 0
 
@@ -379,15 +393,15 @@ class ListObjectsResponse(BaseModel):
         return self.count
 
 
-class BatchGetObjectsInput(BaseModel):
+class BatchGetObjectsInput(CamelModel):
     object_ids: list[str]
 
 
-class BatchGetObjectsResponse(BaseModel):
+class BatchGetObjectsResponse(CamelModel):
     objects: list[ResolvedObject]
 
 
-class ActionLogResponse(BaseModel):
+class ActionLogResponse(CamelModel):
     events: list[ActionEvent]
     total: int
 
@@ -397,21 +411,21 @@ class ActionLogResponse(BaseModel):
 # ========================================
 
 
-class MetricRequest(BaseModel):
+class MetricRequest(CamelModel):
     """Single metric aggregation request."""
     name: str  # Output field name
     type: str  # sum | avg | min | max | count | stats
     field: str = ""  # Field to aggregate (not required for count)
 
 
-class ObjectAggregateRequest(BaseModel):
+class ObjectAggregateRequest(CamelModel):
     """Request for object data aggregation."""
     filters: list[SearchFilter] | None = None
     group_by: list[str] | None = None
     metrics: list[MetricRequest]
 
 
-class ObjectAggregateResult(BaseModel):
+class ObjectAggregateResult(CamelModel):
     """Result of object aggregation."""
     buckets: list[dict[str, Any]] | None = None
     metrics: dict[str, Any] | None = None
@@ -423,21 +437,21 @@ class ObjectAggregateResult(BaseModel):
 # ========================================
 
 
-class CHMetric(BaseModel):
+class CHMetric(CamelModel):
     """ClickHouse aggregation metric."""
     name: str  # Result column name
     function: Literal["count", "sum", "avg", "min", "max"]
     field: str | None = None  # Field to aggregate (not required for count)
 
 
-class CHFilter(BaseModel):
+class CHFilter(CamelModel):
     """ClickHouse aggregation filter."""
     field: str
     operator: Literal["eq", "ne", "gt", "gte", "lt", "lte", "in", "like"]
     value: Any
 
 
-class CHAggregateRequest(BaseModel):
+class CHAggregateRequest(CamelModel):
     """Request for ClickHouse analytics aggregation."""
     object_type: str
     group_by: list[str] | None = None
@@ -448,7 +462,7 @@ class CHAggregateRequest(BaseModel):
     limit: int | None = None
 
 
-class CHAggregateResult(BaseModel):
+class CHAggregateResult(CamelModel):
     """Result of ClickHouse analytics aggregation."""
     rows: list[dict[str, Any]]
     total: int = 0
@@ -459,7 +473,7 @@ class CHAggregateResult(BaseModel):
 # ========================================
 
 
-class OverrideChange(BaseModel):
+class OverrideChange(CamelModel):
     """
     Change specification for ObjectDB Override API.
 
@@ -474,20 +488,20 @@ class OverrideChange(BaseModel):
     value: Any | None = None
 
 
-class OverrideResult(BaseModel):
+class OverrideResult(CamelModel):
     """Result of an override operation."""
     applied_count: int
     updated_objects: list[ResolvedObject] = Field(default_factory=list)
     errors: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class CreateObjectInput(BaseModel):
+class CreateObjectInput(CamelModel):
     """Input for creating a new object."""
     object_id: str
     properties: dict[str, Any]
 
 
-class CreateObjectResult(BaseModel):
+class CreateObjectResult(CamelModel):
     """Result of object creation."""
     tenant_id: str
     object_type: str
@@ -497,14 +511,14 @@ class CreateObjectResult(BaseModel):
     created_at: str
 
 
-class ClearOverrideInput(BaseModel):
+class ClearOverrideInput(CamelModel):
     """Input for clearing overrides."""
     object_type: str
     object_ids: list[str]
     properties: list[str]
 
 
-class ClearOverrideResult(BaseModel):
+class ClearOverrideResult(CamelModel):
     """Result of clearing overrides."""
     cleared_count: int
     updated_objects: list[ResolvedObject] = Field(default_factory=list)
