@@ -693,9 +693,9 @@ class ObjectDBClient:
             "POST",
             f"/api/v1/objects/{object_type}/override",
             body={
-                "object_ids": object_ids,
+                "objectIds": object_ids,
                 "changes": [c.model_dump(exclude_none=True) for c in changes],
-                "action_id": action_id,
+                "actionId": action_id,
             },
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
@@ -738,7 +738,7 @@ class ObjectDBClient:
             "POST",
             f"/api/v1/objects/{object_type}",
             body={
-                "object_id": object_id,
+                "objectId": object_id,
                 "properties": properties,
             },
             query={"tenantId": tenant_id},
@@ -778,7 +778,7 @@ class ObjectDBClient:
             "POST",
             f"/api/v1/objects/{object_type}/override/clear",
             body={
-                "object_ids": object_ids,
+                "objectIds": object_ids,
                 "properties": properties,
             },
             query={"tenantId": tenant_id},
