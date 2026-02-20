@@ -264,7 +264,7 @@ class ObjectDBClient:
         resp = await self._request(
             "POST",
             "/api/v1/object-types",
-            body=input.model_dump(exclude_none=True),
+            body=input.model_dump(exclude_none=True, by_alias=True),
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -281,7 +281,7 @@ class ObjectDBClient:
         resp = await self._request(
             "PUT",
             f"/api/v1/object-types/{type_key}",
-            body=input.model_dump(exclude_none=True),
+            body=input.model_dump(exclude_none=True, by_alias=True),
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -393,7 +393,7 @@ class ObjectDBClient:
         resp = await self._request(
             "POST",
             "/api/v1/link-types",
-            body=input.model_dump(exclude_none=True),
+            body=input.model_dump(exclude_none=True, by_alias=True),
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -410,7 +410,7 @@ class ObjectDBClient:
         resp = await self._request(
             "PUT",
             f"/api/v1/link-types/{link_type_key}",
-            body=input.model_dump(exclude_none=True),
+            body=input.model_dump(exclude_none=True, by_alias=True),
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -485,7 +485,7 @@ class ObjectDBClient:
         resp = await self._request(
             "POST",
             f"/api/v1/objects/{object_type}/search",
-            body=query.model_dump(exclude_none=True),
+            body=query.model_dump(exclude_none=True, by_alias=True),
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -502,7 +502,7 @@ class ObjectDBClient:
         resp = await self._request(
             "POST",
             f"/api/v1/objects/{object_type}/aggregate",
-            body=request.model_dump(exclude_none=True),
+            body=request.model_dump(exclude_none=True, by_alias=True),
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -539,7 +539,7 @@ class ObjectDBClient:
         resp = await self._request(
             "POST",
             "/api/v1/actions",
-            body=input.model_dump(exclude_none=True),
+            body=input.model_dump(exclude_none=True, by_alias=True),
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -627,7 +627,7 @@ class ObjectDBClient:
         resp = await self._request(
             "POST",
             "/api/v1/graph/traverse",
-            body=request.model_dump(exclude_none=True),
+            body=request.model_dump(exclude_none=True, by_alias=True),
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -643,7 +643,7 @@ class ObjectDBClient:
         resp = await self._request(
             "POST",
             "/api/v1/graph/find-paths",
-            body=request.model_dump(exclude_none=True),
+            body=request.model_dump(exclude_none=True, by_alias=True),
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -694,7 +694,7 @@ class ObjectDBClient:
             f"/api/v1/objects/{object_type}/override",
             body={
                 "objectIds": object_ids,
-                "changes": [c.model_dump(exclude_none=True) for c in changes],
+                "changes": [c.model_dump(exclude_none=True, by_alias=True) for c in changes],
                 "actionId": action_id,
             },
             query={"tenantId": tenant_id},
