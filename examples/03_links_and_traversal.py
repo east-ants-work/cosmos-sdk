@@ -96,11 +96,11 @@ async def main():
 
         # See all relationships for an object
         customer = await client.objects.Customer.get("cust_123")
-        edges = await customer.edges()
+        object_links = await customer.links()
 
-        print(f"\nEdges for customer {customer.name}:")
-        for edge in edges:
-            print(f"  - {edge.link_type}: -> {edge.target_id}")
+        print(f"\nLinks for customer {customer.name}:")
+        for link in object_links:
+            print(f"  - {link.link_type}: -> {link.target_id}")
 
 
 if __name__ == "__main__":

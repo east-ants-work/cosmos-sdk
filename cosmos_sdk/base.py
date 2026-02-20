@@ -1248,13 +1248,13 @@ class BaseObject:
         for key, value in changes.items():
             self._data[key] = value
 
-    async def edges(self) -> list[Any]:
-        """Get all edges connected to this object."""
+    async def links(self) -> list[Any]:
+        """Get all links connected to this object."""
         if self._client is None:
-            raise RuntimeError("Cannot get edges without a client")
+            raise RuntimeError("Cannot get links without a client")
 
         api_client = self._client._api_client
-        return await api_client.get_object_edges(
+        return await api_client.get_object_links(
             self.__object_type_key__,
             self.object_id,
         )
