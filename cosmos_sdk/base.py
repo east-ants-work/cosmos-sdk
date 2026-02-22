@@ -234,19 +234,18 @@ class Link(Generic[T]):
         import asyncio
 
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # We're in an async context, can't block
             raise RuntimeError(
                 f"Cannot lazy-load link '{self._name}' in async context. "
                 f"Use 'await obj.load_link(\"{self._name}\")' or eager loading with include=[\"{self._name}\"]"
             )
-        except RuntimeError:
+        except RuntimeError as _e:
+            if "Cannot lazy-load" in str(_e):
+                raise
             # No running loop, safe to run synchronously
-            pass
 
-        result = asyncio.get_event_loop().run_until_complete(
-            self._load_link(obj)
-        )
+        result = asyncio.run(self._load_link(obj))
 
         # Cache the result
         obj._data[cache_key] = result
@@ -788,7 +787,7 @@ class ObjectSet(Generic[T]):
 
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(self.list())
+        result = asyncio.run(self.list())
         df = result.to_dataframe()
 
         # Apply select if specified
@@ -1023,7 +1022,7 @@ class GroupedObjectSet(Generic[T]):
 
         import asyncio
 
-        results = asyncio.get_event_loop().run_until_complete(self.list())
+        results = asyncio.run(self.list())
         return pl.DataFrame(results)
 
 
