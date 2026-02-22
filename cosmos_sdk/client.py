@@ -390,9 +390,10 @@ class CosmosClient:
         if getattr(self, "_initialized", False):
             return
 
-        self._token = token or os.environ.get("COSMOS_AUTH_TOKEN")
+        self._token = token or os.environ.get("COSMOS_AUTH_TOKEN") or os.environ.get("AUTH_TOKEN")
         self._base_url = base_url or os.environ.get("COSMOS_API_URL", "http://localhost:8080")
         self._timeout = timeout
+        self._tenant_id = os.environ.get("ORGANIZATION_ID")
 
         # Initialize API client
         self._api_client = ObjectDBClient(
