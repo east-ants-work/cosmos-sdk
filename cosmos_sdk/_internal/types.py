@@ -121,7 +121,7 @@ class PropertyDefinition(CamelModel):
 
 
 class ObjectType(CamelModel):
-    tenant_id: str
+    tenant_id: str | None = None
     type_key: str
     name: str
     description: str | None = None
@@ -166,7 +166,7 @@ class ForeignKeyConfig(CamelModel):
 
 
 class LinkType(CamelModel):
-    tenant_id: str
+    tenant_id: str | None = None
     link_type_key: str
     name: str
     source_type: str
@@ -198,7 +198,7 @@ class UpdateLinkTypeInput(CamelModel):
 
 
 class Edge(CamelModel):
-    tenant_id: str
+    tenant_id: str | None = None
     link_type: str
     source_id: str
     target_id: str
@@ -227,7 +227,7 @@ class Override(CamelModel):
 
 
 class ResolvedObject(CamelModel):
-    tenant_id: str
+    tenant_id: str | None = None
     object_type: str
     object_id: str
     effective_state: dict[str, Any]
@@ -252,7 +252,7 @@ class PropertyChange(CamelModel):
 
 class ActionEvent(CamelModel):
     event_id: str
-    tenant_id: str
+    tenant_id: str | None = None
     object_type: str
     object_ids: list[str]
     changes: list[PropertyChange]
@@ -503,7 +503,7 @@ class CreateObjectInput(CamelModel):
 
 class CreateObjectResult(CamelModel):
     """Result of object creation."""
-    tenant_id: str
+    tenant_id: str | None = None
     object_type: str
     object_id: str
     effective_state: dict[str, Any]
