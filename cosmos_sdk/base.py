@@ -245,7 +245,13 @@ class Link(Generic[T]):
                 raise
             # No running loop, safe to run synchronously
 
-        result = asyncio.run(self._load_link(obj))
+        async def _load_and_close():
+            try:
+                return await self._load_link(obj)
+            finally:
+                await obj._client._api_client.close()
+
+        result = asyncio.run(_load_and_close())
 
         # Cache the result
         obj._data[cache_key] = result
@@ -791,7 +797,16 @@ class ObjectSet(Generic[T]):
 
         import asyncio
 
-        result = asyncio.run(self.list())
+        async def _fetch():
+            try:
+                return await self.list()
+            finally:
+                # Close httpx client so it doesn't leak across event loops.
+                # asyncio.run() closes the loop after completion, making cached
+                # clients unusable. Closing here forces a fresh client next time.
+                await self._client._api_client.close()
+
+        result = asyncio.run(_fetch())
         df = result.to_dataframe()
 
         # Apply select if specified
@@ -1026,7 +1041,13 @@ class GroupedObjectSet(Generic[T]):
 
         import asyncio
 
-        results = asyncio.run(self.list())
+        async def _fetch():
+            try:
+                return await self.list()
+            finally:
+                await self._object_set._client._api_client.close()
+
+        results = asyncio.run(_fetch())
         return pl.DataFrame(results)
 
 
