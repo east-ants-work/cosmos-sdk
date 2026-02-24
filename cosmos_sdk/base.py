@@ -245,13 +245,15 @@ class Link(Generic[T]):
                 raise
             # No running loop, safe to run synchronously
 
-        async def _load_and_close():
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(self._load_link(obj))
+        finally:
             try:
-                return await self._load_link(obj)
-            finally:
-                await obj._client._api_client.close()
-
-        result = asyncio.run(_load_and_close())
+                loop.run_until_complete(obj._client._api_client.close())
+            except Exception:
+                pass
+            loop.close()
 
         # Cache the result
         obj._data[cache_key] = result
@@ -797,16 +799,19 @@ class ObjectSet(Generic[T]):
 
         import asyncio
 
-        async def _fetch():
+        # Use explicit event loop instead of asyncio.run() to avoid
+        # global event loop policy interference between consecutive calls.
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(self.list())
+        finally:
+            # Close httpx client so it doesn't leak across event loops.
             try:
-                return await self.list()
-            finally:
-                # Close httpx client so it doesn't leak across event loops.
-                # asyncio.run() closes the loop after completion, making cached
-                # clients unusable. Closing here forces a fresh client next time.
-                await self._client._api_client.close()
+                loop.run_until_complete(self._client._api_client.close())
+            except Exception:
+                pass
+            loop.close()
 
-        result = asyncio.run(_fetch())
         df = result.to_dataframe()
 
         # Apply select if specified
@@ -1041,13 +1046,15 @@ class GroupedObjectSet(Generic[T]):
 
         import asyncio
 
-        async def _fetch():
+        loop = asyncio.new_event_loop()
+        try:
+            results = loop.run_until_complete(self.list())
+        finally:
             try:
-                return await self.list()
-            finally:
-                await self._object_set._client._api_client.close()
-
-        results = asyncio.run(_fetch())
+                loop.run_until_complete(self._object_set._client._api_client.close())
+            except Exception:
+                pass
+            loop.close()
         return pl.DataFrame(results)
 
 
