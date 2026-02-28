@@ -221,7 +221,7 @@ class ObjectTypeGenerator:
         for obj_type in object_types:
             class_name = to_pascal_case(obj_type.name)
             module_name = to_snake_case(obj_type.name)
-            lines.append(f"from cosmos_sdk.objects.{module_name} import {class_name}")
+            lines.append(f"from .{module_name} import {class_name}")
             class_names.append(class_name)
 
         lines.append("")

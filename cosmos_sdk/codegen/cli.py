@@ -63,7 +63,7 @@ async def _fetch_schema(
             params={"tenantId": graph_key},
         )
         obj_resp.raise_for_status()
-        obj_data: list[dict[str, Any]] = obj_resp.json().get("data", [])
+        obj_data: list[dict[str, Any]] = obj_resp.json().get("data") or []
 
         # Link types
         lnk_resp = await client.get(
@@ -72,7 +72,7 @@ async def _fetch_schema(
             params={"tenantId": graph_key},
         )
         lnk_resp.raise_for_status()
-        lnk_data: list[dict[str, Any]] = lnk_resp.json().get("data", [])
+        lnk_data: list[dict[str, Any]] = lnk_resp.json().get("data") or []
 
     object_types = [ObjectType.model_validate(t) for t in obj_data]
     link_types = [LinkType.model_validate(t) for t in lnk_data]
