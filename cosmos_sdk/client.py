@@ -53,7 +53,8 @@ class ObjectsAccessor:
         self._last_load_debug = []
         debug = self._last_load_debug
 
-        graph_key = os.environ.get("COSMOS_GRAPH_KEY", "")
+        # client._tenant_id 우선, fallback으로 환경변수
+        graph_key = getattr(self._client, "_tenant_id", None) or os.environ.get("COSMOS_GRAPH_KEY", "")
         debug.append(f"load_attempt_for='{name}'")
 
         if not graph_key:
@@ -230,19 +231,6 @@ class ObjectDBAccessor:
         action_id: str | None = None,
         tenant_id: str | None = None,
     ) -> OverrideResult:
-        """
-        Apply override changes to objects.
-
-        Args:
-            object_type: Type of the objects to modify
-            object_ids: List of object IDs to apply changes to
-            changes: List of OverrideChange specifications
-            action_id: Optional action ID for audit trail
-            tenant_id: Tenant ID (defaults to 'default')
-
-        Returns:
-            OverrideResult with applied_count and updated_objects
-        """
         return await self._api_client.override(
             object_type=object_type,
             object_ids=object_ids,
@@ -258,18 +246,6 @@ class ObjectDBAccessor:
         properties: dict,
         tenant_id: str | None = None,
     ) -> CreateObjectResult:
-        """
-        Create a new object.
-
-        Args:
-            object_type: Type of the object to create
-            object_id: Unique ID for the new object
-            properties: Initial property values
-            tenant_id: Tenant ID (defaults to 'default')
-
-        Returns:
-            CreateObjectResult with the created object info
-        """
         return await self._api_client.create_object(
             object_type=object_type,
             object_id=object_id,
@@ -284,18 +260,6 @@ class ObjectDBAccessor:
         properties: list[str],
         tenant_id: str | None = None,
     ) -> ClearOverrideResult:
-        """
-        Clear overrides and revert to Fact values.
-
-        Args:
-            object_type: Type of the objects
-            object_ids: List of object IDs
-            properties: List of property names to clear overrides for
-            tenant_id: Tenant ID (defaults to 'default')
-
-        Returns:
-            ClearOverrideResult with cleared_count and updated_objects
-        """
         return await self._api_client.clear_override(
             object_type=object_type,
             object_ids=object_ids,
@@ -309,20 +273,6 @@ class ObjectDBAccessor:
         object_id: str,
         tenant_id: str | None = None,
     ) -> None:
-        """
-        Delete an object.
-
-        Args:
-            object_type: Type of the object to delete
-            object_id: ID of the object to delete
-            tenant_id: Tenant ID (defaults to 'default')
-
-        Example:
-            await cosmos.objectdb.delete_object(
-                object_type="Order",
-                object_id="order_123"
-            )
-        """
         await self._api_client.delete_object(
             object_type=object_type,
             object_id=object_id,
@@ -330,37 +280,69 @@ class ObjectDBAccessor:
         )
 
 
+class _AuthManagedObjectDBClient(ObjectDBClient):
+    """
+    ObjectDBClient 확장 — AuthManager로 토큰을 자동 갱신.
+
+    connection_string 모드에서 API Gateway를 통해 ObjectDB에 접근할 때 사용.
+    """
+
+    def __init__(self, base_url: str, auth_manager: Any, timeout: float):
+        super().__init__(base_url=base_url, token=None, timeout=timeout)
+        self._auth_manager = auth_manager
+
+    async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        # jwt_token이 명시적으로 주어지지 않은 경우 AuthManager에서 토큰 획득
+        if kwargs.get("jwt_token") is None:
+            client = await self._get_client()
+            self.token = await self._auth_manager.get_token(client)
+        return await super()._request(method, path, **kwargs)
+
+
 class CosmosClient:
     """
-    Main client for Cosmos SDK (Singleton).
+    Cosmos SDK 통합 클라이언트.
 
-    Provides access to Objects and Links through an ORM-style API.
-    Uses singleton pattern - calling CosmosClient() returns the same instance.
+    Object 쿼리(client.objects)와 Dataset CRUD(client.datasets)를 단일 인터페이스로 제공.
 
-    Example:
-        client = CosmosClient()  # Uses env vars for config
+    인증 방식:
+        # 외부 사용 — connection string (자동 로그인/갱신)
+        client = CosmosClient("cosmos://admin%40cosmos.local:admin123%40@localhost:3001")
 
-        # Get a single object
-        customer = await client.objects.Customer.get("cust_123")
+        # 외부 사용 — 명시적 파라미터
+        client = CosmosClient(
+            base_url="http://localhost:3001",
+            email="admin@cosmos.local",
+            password="admin123@",
+        )
 
-        # Query with filters
+        # 내부 실행환경 — 기존 token 방식 (하위 호환)
+        client = CosmosClient(token="eyJ...")
+
+    사용 예시:
+        # Object 쿼리 (codegen 클래스 또는 lazy 로딩)
         customers = await client.objects.Customer.where(
             Customer.status == "active"
         ).list()
 
-        # Convert to DataFrame
-        df = await client.objects.Customer.where(
-            Customer.status == "active"
-        ).to_dataframe()
+        # Dataset CRUD (connection string 모드에서만 사용 가능)
+        df = await client.datasets.get_dataframe("my_dataset")
+        await client.datasets.overwrite_table("my_dataset", transformed_df)
     """
 
     _initialized: bool = False
 
     def __new__(
         cls,
+        connection_string: str | None = None,
+        *,
+        graph: str | None = None,
         token: str | None = None,
         base_url: str | None = None,
+        email: str | None = None,
+        password: str | None = None,
         timeout: float = 30.0,
+        batch_size: int = 5000,
     ) -> "CosmosClient":
         """Return singleton instance (create if needed)."""
         global _client_instance
@@ -371,47 +353,86 @@ class CosmosClient:
 
     def __init__(
         self,
+        connection_string: str | None = None,
+        *,
+        graph: str | None = None,
         token: str | None = None,
         base_url: str | None = None,
+        email: str | None = None,
+        password: str | None = None,
         timeout: float = 30.0,
+        batch_size: int = 5000,
     ):
         """
-        Initialize Cosmos client (singleton - only initializes once).
-
         Args:
-            token: JWT token for authentication. If not provided,
-                   will try to read from COSMOS_AUTH_TOKEN environment variable.
-            base_url: Base URL of ObjectDB service. If not provided,
-                      will try to read from COSMOS_API_URL environment variable,
-                      defaulting to http://localhost:8080.
-            timeout: Request timeout in seconds.
+            connection_string: "cosmos://email:password@host:port" 형식.
+                환경변수 COSMOS_CONNECTION_STRING도 지원.
+            graph: Graph key. Object 쿼리 범위를 특정 그래프로 한정.
+                생략 시 COSMOS_GRAPH_KEY 환경변수 사용.
+            token: JWT 토큰 직접 주입 (내부 실행환경용, 하위 호환).
+            base_url: 명시적 API URL.
+            email: 이메일 (base_url, password와 함께 사용).
+            password: 패스워드.
+            timeout: HTTP 타임아웃 (초).
+            batch_size: Dataset 배치 크기 (기본 5,000행).
         """
-        # Singleton: only initialize once
         if getattr(self, "_initialized", False):
             return
 
-        self._token = token or os.environ.get("COSMOS_AUTH_TOKEN") or os.environ.get("AUTH_TOKEN")
-        self._base_url = base_url or os.environ.get("COSMOS_API_URL", "http://localhost:8080")
         self._timeout = timeout
-        self._tenant_id = None  # tenant/organization concept is no longer used
+        # graph_key → ObjectSet의 tenant_id로 사용. 환경변수 fallback.
+        self._tenant_id = graph or os.environ.get("COSMOS_GRAPH_KEY") or None
 
-        # Initialize API client
-        self._api_client = ObjectDBClient(
-            base_url=self._base_url,
-            token=self._token,
-            timeout=self._timeout,
-        )
+        # ── 외부 모드: connection string / email+password ──────────────
+        if connection_string or email or os.environ.get("COSMOS_CONNECTION_STRING"):
+            from cosmos_sdk.dataset.auth import AuthManager
+            from cosmos_sdk.dataset.api import DatasetAPIClient
+            from cosmos_sdk.dataset.client import DatasetClient
+            from cosmos_sdk.dataset.connection import (
+                get_connection_from_env,
+                parse_connection_string,
+            )
 
-        # Object type registry
+            if connection_string:
+                conn = parse_connection_string(connection_string)
+            elif base_url and email and password:
+                from cosmos_sdk.dataset.connection import CosmosConnection
+                conn = CosmosConnection(email=email, password=password, base_url=base_url)
+            else:
+                conn = get_connection_from_env()
+                if conn is None:
+                    raise ValueError(
+                        "connection_string, (base_url + email + password), 또는 "
+                        "COSMOS_CONNECTION_STRING 환경변수가 필요합니다."
+                    )
+
+            self._auth_manager = AuthManager(conn.base_url, conn.email, conn.password)
+            # ObjectDB는 API Gateway의 /objects/* 프록시를 통해 접근
+            self._api_client = _AuthManagedObjectDBClient(
+                conn.base_url, self._auth_manager, timeout
+            )
+            # Dataset accessor
+            _ds_api = DatasetAPIClient(self._auth_manager, timeout=timeout)
+            self.datasets: DatasetClient | None = DatasetClient._from_components(
+                self._auth_manager, _ds_api, batch_size, graph_key=self._tenant_id
+            )
+
+        # ── 내부 모드: token 직접 주입 (하위 호환) ────────────────────
+        else:
+            self._auth_manager = None
+            _token = token or os.environ.get("COSMOS_AUTH_TOKEN") or os.environ.get("AUTH_TOKEN")
+            _objectdb_url = base_url or os.environ.get("COSMOS_API_URL", "http://localhost:8080")
+            self._api_client = ObjectDBClient(
+                base_url=_objectdb_url,
+                token=_token,
+                timeout=timeout,
+            )
+            self.datasets = None  # token 모드에서는 built-in function 사용
+
+        # Object type registry (공통)
         self._object_registry: dict[str, type[BaseObject]] = {}
-
-        # Load default objects from cosmos_sdk.objects
         self._load_default_objects()
-
-        # Objects accessor
         self.objects = ObjectsAccessor(self, self._object_registry)
-
-        # ObjectDB accessor (for Override API - used by Object Actions)
         self.objectdb = ObjectDBAccessor(self._api_client)
 
         self._initialized = True
@@ -422,7 +443,6 @@ class CosmosClient:
             import importlib
             from cosmos_sdk import objects
 
-            # Force reload to pick up COSMOS_GRAPH_KEY changes
             importlib.reload(objects)
 
             for name in getattr(objects, "__all__", []):
@@ -430,16 +450,10 @@ class CosmosClient:
                 if obj_class and isinstance(obj_class, type) and issubclass(obj_class, BaseObject):
                     self._object_registry[name] = obj_class
         except ImportError:
-            # No default objects available
             pass
 
     def register_objects(self, *object_types: type[BaseObject]) -> None:
-        """
-        Register additional Object types.
-
-        Args:
-            *object_types: Object classes to register
-        """
+        """Register additional Object types."""
         for obj_type in object_types:
             self._object_registry[obj_type.__name__] = obj_type
 
@@ -450,6 +464,8 @@ class CosmosClient:
     async def close(self) -> None:
         """Close the client and release resources."""
         await self._api_client.close()
+        if self.datasets is not None:
+            await self.datasets.close()
 
     async def __aenter__(self) -> CosmosClient:
         return self
@@ -458,21 +474,31 @@ class CosmosClient:
         await self.close()
 
 
-# Convenience function for creating a client
 def create_client(
+    connection_string: str | None = None,
+    *,
+    graph: str | None = None,
     token: str | None = None,
     base_url: str | None = None,
+    email: str | None = None,
+    password: str | None = None,
 ) -> CosmosClient:
     """
     Create a new Cosmos client.
 
-    This is a convenience function equivalent to CosmosClient(...).
-
     Args:
-        token: JWT token for authentication
-        base_url: Base URL of ObjectDB service
-
-    Returns:
-        CosmosClient instance
+        connection_string: "cosmos://email:password@host:port"
+        graph: Graph key (Object 쿼리 범위 한정)
+        token: JWT 토큰 (내부 실행환경용)
+        base_url: API URL
+        email: 이메일
+        password: 패스워드
     """
-    return CosmosClient(token=token, base_url=base_url)
+    return CosmosClient(
+        connection_string,
+        graph=graph,
+        token=token,
+        base_url=base_url,
+        email=email,
+        password=password,
+    )
