@@ -561,7 +561,7 @@ class ObjectSet(Generic[T]):
         result = await api_client.search_objects(
             self._object_type_key,
             search_query,
-            tenant_id=self._client._graph_key,
+            tenant_id=None,
         )
         objects = result.objects
 
@@ -589,14 +589,14 @@ class ObjectSet(Generic[T]):
             start_result = await api_client.search_objects(
                 self._object_type_key,
                 search_query,
-                tenant_id=self._client._graph_key,
+                tenant_id=None,
             )
             start_objects = start_result.objects
         else:
             start_result = await api_client.list_objects(
                 self._object_type_key,
                 limit=self._limit or 1000,
-                tenant_id=self._client._graph_key,
+                tenant_id=None,
             )
             start_objects = start_result.objects
 
@@ -723,7 +723,7 @@ class ObjectSet(Generic[T]):
             target_result = await api_client.search_objects(
                 target_type_key,
                 search_query,
-                tenant_id=self._client._graph_key,
+                tenant_id=None,
             )
 
             current_objects = target_result.objects
@@ -1267,7 +1267,7 @@ class BaseObject:
             object_type=self.__object_type_key__,
             object_ids=[self.object_id],
             changes=override_changes,
-            tenant_id=self._client._graph_key,
+            tenant_id=None,
         )
 
         # Update local state
