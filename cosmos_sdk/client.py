@@ -380,8 +380,6 @@ class CosmosClient:
             return
 
         self._timeout = timeout
-        # graph_key → ObjectSet의 tenant_id로 사용. 환경변수 fallback.
-        self._tenant_id = graph or os.environ.get("COSMOS_GRAPH_KEY") or None
 
         # ── 외부 모드: connection string / email+password ──────────────
         if connection_string or email or os.environ.get("COSMOS_CONNECTION_STRING"):
@@ -406,6 +404,9 @@ class CosmosClient:
                         "COSMOS_CONNECTION_STRING 환경변수가 필요합니다."
                     )
 
+            # 외부 모드: graph_key → ObjectSet의 tenant_id로 사용
+            self._tenant_id = graph or os.environ.get("COSMOS_GRAPH_KEY") or None
+
             self._auth_manager = AuthManager(conn.base_url, conn.email, conn.password)
             # ObjectDB는 API Gateway의 /objects/* 프록시를 통해 접근
             self._api_client = _AuthManagedObjectDBClient(
@@ -419,6 +420,10 @@ class CosmosClient:
 
         # ── 내부 모드: token 직접 주입 (하위 호환) ────────────────────
         else:
+            # 내부 모드에서는 ObjectDB default tenant를 사용 (tenantId query param 미전달)
+            # objectdb 데이터는 defaultTenantID("default")로 materialized되므로
+            # COSMOS_GRAPH_KEY를 tenant_id로 사용하면 빈 결과가 반환됨
+            self._tenant_id = None
             self._auth_manager = None
             _token = token or os.environ.get("COSMOS_AUTH_TOKEN") or os.environ.get("AUTH_TOKEN")
             _objectdb_url = base_url or os.environ.get("COSMOS_API_URL", "http://localhost:8080")
