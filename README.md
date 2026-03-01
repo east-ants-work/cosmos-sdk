@@ -145,7 +145,7 @@ pip install "cosmos-sdk[polars]"
 cosmos-codegen generate \
     --connection "cosmos://admin%40cosmos.local:admin123%40@localhost:3001" \
     --graph my_graph \
-    --output ./cosmos_objects
+    --output ./cosmos_sdk/objects
 
 # 타입 목록 확인
 cosmos-codegen list \
@@ -156,11 +156,8 @@ cosmos-codegen list \
 생성된 클래스는 `CosmosClient` 싱글톤을 통해 동작합니다. analytics 코드와 동일한 패턴으로 클래스를 직접 임포트해서 사용합니다.
 
 ```python
-import sys
-sys.path.insert(0, ".")
-from cosmos_objects import Customer, Order
-
 from cosmos_sdk import CosmosClient
+from cosmos_sdk.objects import Customer, Order
 
 # 싱글톤 초기화
 CosmosClient("cosmos://admin%40cosmos.local:admin123%40@localhost:3001", graph="my_graph")
