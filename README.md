@@ -138,22 +138,25 @@ orders = await client.objects.Order.where(
 Object/Link 타입 정의에서 Python 클래스를 자동 생성합니다.
 
 ```bash
-# 설치
-pip install "cosmos-sdk[polars]"
+# 타입 목록 확인
+cosmos-codegen list \
+    --connection "cosmos://admin%40cosmos.local:admin123%40@localhost:3001" \
+    --graph my_graph
 
 # Object 클래스 생성
 cosmos-codegen generate \
     --connection "cosmos://admin%40cosmos.local:admin123%40@localhost:3001" \
     --graph my_graph \
-    --output ./cosmos_sdk/objects
-
-# 타입 목록 확인
-cosmos-codegen list \
-    --connection "cosmos://..." \
-    --graph my_graph
+    --output ./python-sdk/my_graph
 ```
 
-생성된 클래스는 `CosmosClient` 싱글톤을 통해 동작합니다. analytics 코드와 동일한 패턴으로 클래스를 직접 임포트해서 사용합니다.
+`cosmos_sdk.objects`는 `COSMOS_SDK_PATH/{COSMOS_GRAPH_KEY}/` 경로에서 클래스를 동적으로 로드합니다.
+생성된 파일을 해당 경로에 맞게 배치하고 환경변수를 설정하면 analytics 코드와 동일한 패턴으로 사용할 수 있습니다.
+
+```bash
+export COSMOS_SDK_PATH=./python-sdk
+export COSMOS_GRAPH_KEY=my_graph
+```
 
 ```python
 from cosmos_sdk import CosmosClient
