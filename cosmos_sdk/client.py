@@ -53,8 +53,8 @@ class ObjectsAccessor:
         self._last_load_debug = []
         debug = self._last_load_debug
 
-        # client._tenant_id 우선, fallback으로 환경변수
-        graph_key = getattr(self._client, "_tenant_id", None) or os.environ.get("COSMOS_GRAPH_KEY", "")
+        # client._graph_key 우선, fallback으로 환경변수
+        graph_key = getattr(self._client, "_graph_key", None) or os.environ.get("COSMOS_GRAPH_KEY", "")
         debug.append(f"load_attempt_for='{name}'")
 
         if not graph_key:
@@ -283,8 +283,6 @@ class ObjectDBAccessor:
 class _AuthManagedObjectDBClient(ObjectDBClient):
     """
     ObjectDBClient 확장 — AuthManager로 토큰을 자동 갱신.
-
-    connection_string 모드에서 API Gateway를 통해 ObjectDB에 접근할 때 사용.
     """
 
     def __init__(self, base_url: str, auth_manager: Any, timeout: float):
@@ -306,17 +304,17 @@ class CosmosClient:
     Object 쿼리(client.objects)와 Dataset CRUD(client.datasets)를 단일 인터페이스로 제공.
 
     인증 방식:
-        # 외부 사용 — connection string (자동 로그인/갱신)
+        # connection string (자동 로그인/갱신)
         client = CosmosClient("cosmos://admin%40cosmos.local:admin123%40@localhost:3001")
 
-        # 외부 사용 — 명시적 파라미터
+        # 명시적 파라미터
         client = CosmosClient(
             base_url="http://localhost:3001",
             email="admin@cosmos.local",
             password="admin123@",
         )
 
-        # 내부 실행환경 — 기존 token 방식 (하위 호환)
+        # JWT 토큰 직접 주입 (내부 실행환경용)
         client = CosmosClient(token="eyJ...")
 
     사용 예시:
@@ -325,7 +323,7 @@ class CosmosClient:
             Customer.status == "active"
         ).list()
 
-        # Dataset CRUD (connection string 모드에서만 사용 가능)
+        # Dataset CRUD (connection string 또는 token+graph 모드에서 사용 가능)
         df = await client.datasets.get_dataframe("my_dataset")
         await client.datasets.overwrite_table("my_dataset", transformed_df)
     """
@@ -369,7 +367,7 @@ class CosmosClient:
                 환경변수 COSMOS_CONNECTION_STRING도 지원.
             graph: Graph key. Object 쿼리 범위를 특정 그래프로 한정.
                 생략 시 COSMOS_GRAPH_KEY 환경변수 사용.
-            token: JWT 토큰 직접 주입 (내부 실행환경용, 하위 호환).
+            token: JWT 토큰 직접 주입 (내부 실행환경용).
             base_url: 명시적 API URL.
             email: 이메일 (base_url, password와 함께 사용).
             password: 패스워드.
@@ -380,8 +378,9 @@ class CosmosClient:
             return
 
         self._timeout = timeout
+        self._graph_key = graph or os.environ.get("COSMOS_GRAPH_KEY")
 
-        # ── 외부 모드: connection string / email+password ──────────────
+        # ── connection string / email+password 모드 ──────────────────────
         if connection_string or email or os.environ.get("COSMOS_CONNECTION_STRING"):
             from cosmos_sdk.dataset.auth import AuthManager
             from cosmos_sdk.dataset.api import DatasetAPIClient
@@ -404,30 +403,38 @@ class CosmosClient:
                         "COSMOS_CONNECTION_STRING 환경변수가 필요합니다."
                     )
 
-            self._tenant_id = None
             self._auth_manager = AuthManager(conn.base_url, conn.email, conn.password)
-            # ObjectDB는 API Gateway의 /objects/* 프록시를 통해 접근
             self._api_client = _AuthManagedObjectDBClient(
                 conn.base_url, self._auth_manager, timeout
             )
-            # Dataset accessor
             _ds_api = DatasetAPIClient(self._auth_manager, timeout=timeout)
             self.datasets: DatasetClient | None = DatasetClient._from_components(
-                self._auth_manager, _ds_api, batch_size, graph_key=self._tenant_id
+                self._auth_manager, _ds_api, batch_size, graph_key=self._graph_key
             )
 
-        # ── 내부 모드: token 직접 주입 (하위 호환) ────────────────────
+        # ── JWT 토큰 직접 주입 모드 ──────────────────────────────────────
         else:
-            self._tenant_id = None
             self._auth_manager = None
             _token = token or os.environ.get("COSMOS_AUTH_TOKEN") or os.environ.get("AUTH_TOKEN")
-            _objectdb_url = base_url or os.environ.get("COSMOS_API_URL", "http://localhost:8080")
+            _api_url = base_url or os.environ.get("COSMOS_API_URL", "http://localhost:8080")
             self._api_client = ObjectDBClient(
-                base_url=_objectdb_url,
+                base_url=_api_url,
                 token=_token,
                 timeout=timeout,
             )
-            self.datasets = None  # token 모드에서는 built-in function 사용
+
+            # token 모드에서도 graph_key가 있으면 DatasetClient 생성
+            if _token and self._graph_key:
+                from cosmos_sdk.dataset.api import DatasetAPIClient
+                from cosmos_sdk.dataset.client import DatasetClient
+                from cosmos_sdk.dataset.auth import TokenAuthManager
+                _token_auth = TokenAuthManager(_token, _api_url)
+                _ds_api = DatasetAPIClient(_token_auth, timeout=timeout)
+                self.datasets = DatasetClient._from_components(
+                    _token_auth, _ds_api, batch_size, graph_key=self._graph_key
+                )
+            else:
+                self.datasets = None
 
         # Object type registry (공통)
         self._object_registry: dict[str, type[BaseObject]] = {}

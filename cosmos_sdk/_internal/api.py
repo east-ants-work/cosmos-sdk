@@ -11,19 +11,10 @@ from urllib.parse import urlencode
 import httpx
 
 from cosmos_sdk._internal.types import (
-    ActionEvent,
-    ActionLogResponse,
-    ApplyActionInput,
-    BatchGetObjectsInput,
-    BatchGetObjectsResponse,
     ClearOverrideResult,
-    CreateLinkTypeInput,
     CreateObjectInput,
     CreateObjectResult,
-    CreateObjectTypeInput,
     Edge,
-    FindPathsRequest,
-    FindPathsResult,
     LinkType,
     ListLinkTypesResponse,
     ListObjectsResponse,
@@ -36,10 +27,6 @@ from cosmos_sdk._internal.types import (
     ResolvedObject,
     SearchQuery,
     SearchResult,
-    TraversalRequest,
-    TraversalResult,
-    UpdateLinkTypeInput,
-    UpdateObjectTypeInput,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,7 +60,7 @@ class ObjectDBClient:
         Initialize ObjectDB client.
 
         Args:
-            base_url: Base URL of ObjectDB service (e.g., "http://localhost:8080")
+            base_url: Base URL of API Gateway (e.g., "http://localhost:3001")
             token: JWT token for authentication
             timeout: Request timeout in seconds
         """
@@ -190,10 +177,6 @@ class ObjectDBClient:
         """Check service health."""
         return await self._request("GET", "/health")
 
-    async def ready(self) -> dict[str, str]:
-        """Check service readiness."""
-        return await self._request("GET", "/ready")
-
     # ========================================
     # ObjectType API
     # ========================================
@@ -206,7 +189,7 @@ class ObjectDBClient:
         """List all object types."""
         resp = await self._request(
             "GET",
-            "/api/v1/object-types",
+            "/api/v1/objects/object-types",
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -224,7 +207,7 @@ class ObjectDBClient:
         """Get object type by key."""
         resp = await self._request(
             "GET",
-            f"/api/v1/object-types/{type_key}",
+            f"/api/v1/objects/object-types/{type_key}",
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -241,7 +224,7 @@ class ObjectDBClient:
         try:
             resp = await self._request(
                 "GET",
-                "/api/v1/object-types",
+                "/api/v1/objects/object-types",
                 query={"tenantId": tenant_id, "name": name},
                 jwt_token=jwt_token,
             )
@@ -253,53 +236,6 @@ class ObjectDBClient:
             if e.status_code == 404:
                 return None
             raise
-
-    async def create_object_type(
-        self,
-        input: CreateObjectTypeInput,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> ObjectType:
-        """Create a new object type."""
-        resp = await self._request(
-            "POST",
-            "/api/v1/object-types",
-            body=input.model_dump(exclude_none=True, by_alias=True),
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
-        return ObjectType.model_validate(resp.get("data", resp))
-
-    async def update_object_type(
-        self,
-        type_key: str,
-        input: UpdateObjectTypeInput,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> ObjectType:
-        """Update an object type."""
-        resp = await self._request(
-            "PUT",
-            f"/api/v1/object-types/{type_key}",
-            body=input.model_dump(exclude_none=True, by_alias=True),
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
-        return ObjectType.model_validate(resp.get("data", resp))
-
-    async def delete_object_type(
-        self,
-        type_key: str,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> None:
-        """Delete an object type."""
-        await self._request(
-            "DELETE",
-            f"/api/v1/object-types/{type_key}",
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
 
     # ========================================
     # LinkType API
@@ -313,7 +249,7 @@ class ObjectDBClient:
         """List all link types."""
         resp = await self._request(
             "GET",
-            "/api/v1/link-types",
+            "/api/v1/objects/link-types",
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -331,7 +267,7 @@ class ObjectDBClient:
         """Get link type by key."""
         resp = await self._request(
             "GET",
-            f"/api/v1/link-types/{link_type_key}",
+            f"/api/v1/objects/link-types/{link_type_key}",
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
@@ -355,7 +291,7 @@ class ObjectDBClient:
         try:
             resp = await self._request(
                 "GET",
-                "/api/v1/link-types",
+                "/api/v1/objects/link-types",
                 query={
                     "tenantId": tenant_id,
                     "name": name,
@@ -382,53 +318,6 @@ class ObjectDBClient:
             if e.status_code == 404:
                 return None
             raise
-
-    async def create_link_type(
-        self,
-        input: CreateLinkTypeInput,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> LinkType:
-        """Create a new link type."""
-        resp = await self._request(
-            "POST",
-            "/api/v1/link-types",
-            body=input.model_dump(exclude_none=True, by_alias=True),
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
-        return LinkType.model_validate(resp.get("data", resp))
-
-    async def update_link_type(
-        self,
-        link_type_key: str,
-        input: UpdateLinkTypeInput,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> LinkType:
-        """Update a link type."""
-        resp = await self._request(
-            "PUT",
-            f"/api/v1/link-types/{link_type_key}",
-            body=input.model_dump(exclude_none=True, by_alias=True),
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
-        return LinkType.model_validate(resp.get("data", resp))
-
-    async def delete_link_type(
-        self,
-        link_type_key: str,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> None:
-        """Delete a link type."""
-        await self._request(
-            "DELETE",
-            f"/api/v1/link-types/{link_type_key}",
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
 
     # ========================================
     # Objects API
@@ -508,65 +397,6 @@ class ObjectDBClient:
         )
         return ObjectAggregateResult.model_validate(resp.get("data", resp))
 
-    async def batch_get_objects(
-        self,
-        object_type: str,
-        input: BatchGetObjectsInput,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> BatchGetObjectsResponse:
-        """Get multiple objects by IDs."""
-        resp = await self._request(
-            "POST",
-            f"/api/v1/objects/{object_type}/batch",
-            body=input.model_dump(),
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
-        return BatchGetObjectsResponse.model_validate(resp.get("data", resp))
-
-    # ========================================
-    # Actions API
-    # ========================================
-
-    async def apply_action(
-        self,
-        input: ApplyActionInput,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> ActionEvent:
-        """Apply an action to objects."""
-        resp = await self._request(
-            "POST",
-            "/api/v1/actions",
-            body=input.model_dump(exclude_none=True, by_alias=True),
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
-        return ActionEvent.model_validate(resp.get("data", resp))
-
-    async def get_action_log(
-        self,
-        object_type: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> ActionLogResponse:
-        """Get action log."""
-        resp = await self._request(
-            "GET",
-            "/api/v1/actions/log",
-            query={
-                "tenantId": tenant_id,
-                "object_type": object_type,
-                "limit": limit,
-                "offset": offset,
-            },
-            jwt_token=jwt_token,
-        )
-        return ActionLogResponse.model_validate(resp.get("data", resp))
-
     # ========================================
     # Graph Traversal API
     # ========================================
@@ -616,38 +446,6 @@ class ObjectDBClient:
         )
         items = resp.get("data", resp.get("objects", []))
         return [ResolvedObject.model_validate(o) for o in items]
-
-    async def traverse(
-        self,
-        request: TraversalRequest,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> TraversalResult:
-        """Traverse the object graph."""
-        resp = await self._request(
-            "POST",
-            "/api/v1/graph/traverse",
-            body=request.model_dump(exclude_none=True, by_alias=True),
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
-        return TraversalResult.model_validate(resp.get("data", resp))
-
-    async def find_paths(
-        self,
-        request: FindPathsRequest,
-        tenant_id: str | None = None,
-        jwt_token: str | None = None,
-    ) -> FindPathsResult:
-        """Find paths between object types (schema-level)."""
-        resp = await self._request(
-            "POST",
-            "/api/v1/graph/find-paths",
-            body=request.model_dump(exclude_none=True, by_alias=True),
-            query={"tenantId": tenant_id},
-            jwt_token=jwt_token,
-        )
-        return FindPathsResult.model_validate(resp.get("data", resp))
 
     # ========================================
     # Override API (Object Actions)
@@ -814,4 +612,3 @@ class ObjectDBClient:
             query={"tenantId": tenant_id},
             jwt_token=jwt_token,
         )
-

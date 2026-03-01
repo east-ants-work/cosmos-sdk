@@ -113,3 +113,17 @@ class AuthManager:
         self._refresh_token = data.get("refresh_token")
         expires_in: int = data.get("expires_in", 3600)
         self._expires_at = time.time() + expires_in
+
+
+class TokenAuthManager:
+    """고정 JWT 토큰을 사용하는 AuthManager (내부 실행환경용)."""
+
+    def __init__(self, token: str, base_url: str):
+        self._token = token
+        self._base_url = base_url.rstrip("/")
+
+    async def get_token(self, client: Any) -> str:
+        return self._token
+
+    def invalidate(self) -> None:
+        pass

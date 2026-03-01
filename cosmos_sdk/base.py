@@ -561,7 +561,7 @@ class ObjectSet(Generic[T]):
         result = await api_client.search_objects(
             self._object_type_key,
             search_query,
-            tenant_id=self._client._tenant_id,
+            tenant_id=self._client._graph_key,
         )
         objects = result.objects
 
@@ -589,14 +589,14 @@ class ObjectSet(Generic[T]):
             start_result = await api_client.search_objects(
                 self._object_type_key,
                 search_query,
-                tenant_id=self._client._tenant_id,
+                tenant_id=self._client._graph_key,
             )
             start_objects = start_result.objects
         else:
             start_result = await api_client.list_objects(
                 self._object_type_key,
                 limit=self._limit or 1000,
-                tenant_id=self._client._tenant_id,
+                tenant_id=self._client._graph_key,
             )
             start_objects = start_result.objects
 
@@ -723,7 +723,7 @@ class ObjectSet(Generic[T]):
             target_result = await api_client.search_objects(
                 target_type_key,
                 search_query,
-                tenant_id=self._client._tenant_id,
+                tenant_id=self._client._graph_key,
             )
 
             current_objects = target_result.objects
@@ -1250,30 +1250,25 @@ class BaseObject:
         """
         Update object properties.
 
-        Uses the Actions API to apply changes.
+        Uses the Override API to apply changes.
         """
         if self._client is None:
             raise RuntimeError("Cannot update without a client")
 
-        from cosmos_sdk._internal.types import (
-            AllowedOperation,
-            ApplyActionInput,
-            PropertyChange,
-        )
+        from cosmos_sdk._internal.types import AllowedOperation, OverrideChange
 
-        property_changes = [
-            PropertyChange(property=key, op=AllowedOperation.SET, value=value)
+        override_changes = [
+            OverrideChange(property=key, op=AllowedOperation.SET, value=value)
             for key, value in changes.items()
         ]
 
-        input_data = ApplyActionInput(
+        api_client = self._client._api_client
+        await api_client.override(
             object_type=self.__object_type_key__,
             object_ids=[self.object_id],
-            changes=property_changes,
+            changes=override_changes,
+            tenant_id=self._client._graph_key,
         )
-
-        api_client = self._client._api_client
-        await api_client.apply_action(input_data)
 
         # Update local state
         for key, value in changes.items():
