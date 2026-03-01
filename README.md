@@ -33,12 +33,9 @@ export COSMOS_GRAPH_KEY="my_graph"
 
 Internal Dataset을 외부 스크립트(ETL, cron job 등)에서 직접 읽고 쓸 수 있습니다.
 
-### CosmosClient (권장)
-
 `graph=` 파라미터를 주면 dataset key 대신 **name**으로도 접근할 수 있습니다.
 
 ```python
-import asyncio
 import polars as pl
 from cosmos_sdk import CosmosClient
 
@@ -52,17 +49,6 @@ df = await client.datasets.get_dataframe("customer_orders")       # name
 df = await client.datasets.get_dataframe("dataset_3be80ce71bb7")  # key
 
 await client.close()
-```
-
-### DatasetClient (독립 사용)
-
-```python
-from cosmos_sdk.dataset import DatasetClient
-
-client = DatasetClient(
-    "cosmos://admin%40cosmos.local:admin123%40@localhost:3001",
-    graph_key="my_graph",  # name 접근을 위해 필요
-)
 ```
 
 ### 데이터 읽기
@@ -121,23 +107,6 @@ result = await client.datasets.delete_rows(
 | `in` / `not_in` | 목록 포함 / 미포함 |
 | `is_null` / `is_not_null` | null 여부 |
 
-### Sync API
-
-`asyncio`를 직접 쓰기 어려운 환경에서는 `_sync` suffix 메서드를 사용합니다.
-
-```python
-from cosmos_sdk.dataset import DatasetClient
-
-client = DatasetClient(
-    "cosmos://admin%40cosmos.local:admin123%40@localhost:3001",
-    graph_key="my_graph",
-)
-
-df = client.get_dataframe_sync("customer_orders")
-client.overwrite_table_sync("customer_orders", df)
-client.close_sync()
-```
-
 ## Object Graph 쿼리
 
 ```python
@@ -184,17 +153,24 @@ cosmos-codegen list \
     --graph my_graph
 ```
 
-생성된 클래스 사용:
+생성된 클래스는 `CosmosClient` 싱글톤을 통해 동작합니다. analytics 코드와 동일한 패턴으로 클래스를 직접 임포트해서 사용합니다.
 
 ```python
 import sys
 sys.path.insert(0, ".")
 from cosmos_objects import Customer, Order
 
-client = CosmosClient("cosmos://...", graph="my_graph")
-client.register_objects(Customer, Order)
+from cosmos_sdk import CosmosClient
 
-customers = await client.objects.Customer.where(
-    Customer.tier == "Gold"
-).list()
+# 싱글톤 초기화
+CosmosClient("cosmos://admin%40cosmos.local:admin123%40@localhost:3001", graph="my_graph")
+
+# 클래스 메서드 직접 사용
+customers = await Customer.where(Customer.tier == "Gold").list()
+df = await Order.where(Order.status == "pending").to_dataframe()
+
+# 관계 탐색
+vip_orders = await Order.where(
+    Order.status == "completed"
+).search_around("customer").list()
 ```
