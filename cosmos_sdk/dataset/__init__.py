@@ -13,10 +13,12 @@ cosmos_sdk.dataset — Internal Dataset 외부 CRUD SDK.
 from cosmos_sdk.dataset.client import DatasetClient
 from cosmos_sdk.dataset.connection import CosmosConnection, parse_connection_string
 from cosmos_sdk.dataset.errors import AuthError, BatchError, DatasetError, NotFoundError
+from cosmos_sdk.dataset.handle import Dataset
 from cosmos_sdk.dataset.errors import PermissionError as DatasetPermissionError
 from cosmos_sdk.dataset.types import FilterSpec, RowsResult
 
 __all__ = [
+    "Dataset",
     "DatasetClient",
     "CosmosConnection",
     "parse_connection_string",

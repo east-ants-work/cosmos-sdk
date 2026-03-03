@@ -29,7 +29,7 @@ Legacy compatibility (deprecated):
 """
 
 from cosmos_sdk.client import CosmosClient, ObjectDBAccessor, create_client
-from cosmos_sdk.dataset import DatasetClient
+from cosmos_sdk.dataset import Dataset, DatasetClient
 from cosmos_sdk.base import (
     Agg,
     BaseObject,
@@ -68,6 +68,7 @@ __all__ = [
     "CosmosClient",
     "create_client",
     # Dataset SDK
+    "Dataset",
     "DatasetClient",
     # Base classes
     "BaseObject",
